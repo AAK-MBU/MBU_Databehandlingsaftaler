@@ -4,6 +4,8 @@ import os
 import glob
 from datetime import datetime
 import json
+import hashlib
+
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 
 
@@ -45,14 +47,28 @@ def retrieve_changes(base_dir):
     return approve_data, delete_data, wait_data
 
 
-def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection: OrchestratorConnection):
+def generate_short_hash(data, length=8):
     """
-    Uploads the processed data to the corresponding queues in the Orchestrator.
+    Generer en kort hash baseret på inputdata.
+    
+    Args:
+        data (str): Dataen, som hash'en skal genereres ud fra.
+        length (int): Længden på den ønskede hash.
+    
+    Returns:
+        str: Den korte hash.
+    """
+    hash_object = hashlib.md5(data.encode())
+    return hash_object.hexdigest()[:length]  # Forkorte hash til ønsket længde
+
+def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection):
+    """
+    Uploads the processed data to a queue in the Orchestrator.
 
     Args:
-        approve_data (list of dict): List of dictionaries containing Aftaler to be uploaded to the 'Godkend Aftale Queue'.
-        delete_data (list of dict): List of dictionaries containing Aftaler to be uploaded to the 'Slet Aftale Queue'.
-        wait_data (list of dict): List of dictionaries containing Aftaler to be uploaded to the 'Vent Aftale Queue'.
+        approve_data (list of dict): List of dictionaries containing Aftaler to be approved.
+        delete_data (list of dict): List of dictionaries containing Aftaler to be deleted.
+        wait_data (list of dict): List of dictionaries containing Aftaler to be waiting.
         orchestrator_connection (OrchestratorConnection): An instance of the OrchestratorConnection used to interact with the Orchestrator.
 
     Returns:
@@ -64,11 +80,10 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     delete_data_json = [json.dumps(data) for data in delete_data]
     wait_data_json = [json.dumps(data) for data in wait_data]
 
-    approve_references = [f"Godkend_{current_date}_{i+1}" for i in range(len(approve_data))]
-    orchestrator_connection.bulk_create_queue_elements("Godkend Aftale Queue", references=approve_references, data=approve_data_json)
-    
-    delete_references = [f"Slet_{current_date}_{i+1}" for i in range(len(delete_data))]
-    orchestrator_connection.bulk_create_queue_elements("Slet Aftale Queue", references=delete_references, data=delete_data_json)
+    approve_references = [f"Godkend_{current_date}_{generate_short_hash(data)}" for data in approve_data]
+    delete_references = [f"Slet_{current_date}_{generate_short_hash(data)}" for data in delete_data]
+    wait_references = [f"Vent_{current_date}_{generate_short_hash(data)}" for data in wait_data]
 
-    wait_references = [f"Vent_{current_date}_{i+1}" for i in range(len(wait_data))]
-    orchestrator_connection.bulk_create_queue_elements("Vent Aftale Queue", references=wait_references, data=wait_data_json)
+    orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=approve_references, data=approve_data_json)
+    orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=delete_references, data=delete_data_json)
+    orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=wait_references, data=wait_data_json)
