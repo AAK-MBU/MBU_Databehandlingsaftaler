@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import glob
 from datetime import datetime
+import json
+from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 
 
 def retrieve_changes(base_dir):
@@ -58,11 +60,15 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     """
     current_date = datetime.now().strftime('%d%m%Y')
 
+    approve_data_json = [json.dumps(data) for data in approve_data]
+    delete_data_json = [json.dumps(data) for data in delete_data]
+    wait_data_json = [json.dumps(data) for data in wait_data]
+
     approve_references = [f"Godkend_{current_date}_{i+1}" for i in range(len(approve_data))]
-    orchestrator_connection.bulk_create_queue_elements("Godkend Aftale Queue", references=approve_references, data=approve_data)
+    orchestrator_connection.bulk_create_queue_elements("Godkend Aftale Queue", references=approve_references, data=approve_data_json)
     
     delete_references = [f"Slet_{current_date}_{i+1}" for i in range(len(delete_data))]
-    orchestrator_connection.bulk_create_queue_elements("Slet Aftale Queue", references=delete_references, data=delete_data)
+    orchestrator_connection.bulk_create_queue_elements("Slet Aftale Queue", references=delete_references, data=delete_data_json)
 
     wait_references = [f"Vent_{current_date}_{i+1}" for i in range(len(wait_data))]
-    orchestrator_connection.bulk_create_queue_elements("Vent Aftale Queue", references=wait_references, data=wait_data)
+    orchestrator_connection.bulk_create_queue_elements("Vent Aftale Queue", references=wait_references, data=wait_data_json)
