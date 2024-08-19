@@ -189,7 +189,7 @@ def process_organisation(browser, org, organisation_name, base_dir, result_df, e
         )
         row.click()
         close_notifications_popup(browser)
-        WebDriverWait(browser, 50).until(
+        WebDriverWait(browser, 200).until(
             EC.element_to_be_clickable((By.LINK_TEXT, "Dataadgangadministration"))
         ).click()
 
@@ -307,7 +307,7 @@ def save_overview(result_df, base_dir, error_log):
         error_log_df.to_excel(error_log_path, index=False, sheet_name='Errors')
 
 
-def main(base_dir, connection_string):
+def run(base_dir, connection_string):
     browser = initialize_browser(base_dir)
 
     result_df = pd.DataFrame()
@@ -344,6 +344,13 @@ def main(base_dir, connection_string):
             print(error_message)
             for instregnr in missing_instregnr:
                 error_log.append({'InstRegNr': instregnr, 'Organisation': 'Unknown', 'Error': 'File not downloaded or processed'})
+
+    except Exception as e:
+        # Log any unexpected errors that occur during the execution
+        error_message = f"Unexpected error occurred: {str(e)}"
+        print(error_message)
+        error_log.append({'InstRegNr': 'N/A', 'Organisation': 'N/A', 'Error': error_message})
+
 
     finally:
         browser.quit()
