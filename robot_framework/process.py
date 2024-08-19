@@ -2,10 +2,8 @@
 
 from datetime import datetime
 import os
-import pandas as pd
 import json
 import pyodbc
-import sys
 
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 from robot_framework.subprocesses.overview_creation import run
