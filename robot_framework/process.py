@@ -4,10 +4,10 @@ from datetime import datetime
 import os
 import json
 import pyodbc
-
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
-from robot_framework.subprocesses.overview_creation import run
+from robot_framework.subprocesses.overview_creation import run_overview_creation
 from robot_framework.subprocesses.queue_upload import retrieve_changes, upload_to_queue
+from robot_framework.subprocesses.queue_handling import run_queue_handling
 
 def process(orchestrator_connection: OrchestratorConnection) -> None:
     """Do the primary process of the robot."""
@@ -17,23 +17,34 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         connection_string = orchestrator_connection.get_constant('DbConnectionString').value
         oc_args_json = json.loads(orchestrator_connection.process_arguments)
         process_arg = oc_args_json['process']
-        base_dir = oc_args_json['base_dir']
 
-        if process_arg == 'create_overview':
+        if process_arg == 'create_overview': # Needs acces to db
+            base_dir = oc_args_json['base_dir']
             orchestrator_connection.log_trace("Starting overview creation.")
-            run(base_dir, connection_string)
+            run_overview_creation(base_dir, connection_string)
             orchestrator_connection.log_trace("Overview creation completed.")
 
-        if process_arg == 'queue_upload':
+        if process_arg == 'queue_upload': # Can use test-machine
+            base_dir = oc_args_json['base_dir']
             orchestrator_connection.log_trace("Retrieving changes from overview.")
             approve_data, delete_data, wait_data = retrieve_changes(base_dir)
             orchestrator_connection.log_trace("Changes retrieved. Uploading to queue.")
             upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection)
             orchestrator_connection.log_trace("Queue upload completed.")
 
-        if process_arg == 'delete_element':
-            orchestrator_connection.delete_queue_element("ba0356aa-2505-4cdc-b285-3861af7e5045")
+        if process_arg == 'delete_queue':
+            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
+            for element in queue_elements:
+                orchestrator_connection.delete_queue_element(element.id)
+            orchestrator_connection.log_trace("Databehandlingsaftale_Status_Queue deleted.")
 
+        if process_arg == 'handle_queue': # Can use test-machine
+            queue_elements = orchestrator_connection.get_queue_elements(queue_name='Databehandlingsaftale_Status_Queue', status=QueueStatus.NEW)
+            if (queue_elements):
+                orchestrator_connection.log_trace(f"Handling {len(queue_elements)} queue elements.")
+                run_queue_handling(queue_elements, orchestrator_connection)
+                orchestrator_connection.log_trace("Queue handling completed.")
+        
         else:
             raise ValueError(f"Invalid process: {process_arg}")
     
@@ -47,6 +58,8 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
 
 
 if __name__ == "__main__":
-    json_args = '{"process": "delete_element", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata"}'
-    oc = OrchestratorConnection("Dataaftaler - queue upload test", os.getenv('OpenOrchestratorConnStringTest'), os.getenv('OpenOrchestratorKeyTest'), json_args)
+    # json_args = '{"process": "delete_queue"}'
+    # json_args = '{"process": "queue_upload", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata"}'
+    json_args = '{"process": "create_overview", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata"}'
+    oc = OrchestratorConnection("Dataaftaler - creating overview", os.getenv('OpenOrchestratorConnStringTest'), os.getenv('OpenOrchestratorKeyTest'), json_args)
     process(oc)
