@@ -307,7 +307,7 @@ def save_overview(result_df, base_dir, error_log):
         error_log_df.to_excel(error_log_path, index=False, sheet_name='Errors')
 
 
-def run(base_dir, connection_string):
+def run_overview_creation(base_dir, connection_string):
     browser = initialize_browser(base_dir)
 
     result_df = pd.DataFrame()
