@@ -49,17 +49,19 @@ def retrieve_changes(base_dir):
 
 def generate_short_hash(data, length=8):
     """
-    Generer en kort hash baseret på inputdata.
-    
+    Generate a short hash based on input data.
+
     Args:
-        data (str): Dataen, som hash'en skal genereres ud fra.
-        length (int): Længden på den ønskede hash.
-    
+        data (str): The data to generate the hash from.
+        length (int): The length of the desired hash.
+
     Returns:
-        str: Den korte hash.
+        str: The short hash.
     """
+    if isinstance(data, dict):
+        data = json.dumps(data, sort_keys=True)
     hash_object = hashlib.md5(data.encode())
-    return hash_object.hexdigest()[:length]  # Forkorte hash til ønsket længde
+    return hash_object.hexdigest()[:length] 
 
 def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection):
     """
@@ -74,15 +76,13 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     Returns:
         None
     """
-    current_date = datetime.now().strftime('%d%m%Y')
-
     approve_data_json = [json.dumps(data) for data in approve_data]
     delete_data_json = [json.dumps(data) for data in delete_data]
     wait_data_json = [json.dumps(data) for data in wait_data]
 
-    approve_references = [f"Godkend_{current_date}_{generate_short_hash(data)}" for data in approve_data]
-    delete_references = [f"Slet_{current_date}_{generate_short_hash(data)}" for data in delete_data]
-    wait_references = [f"Vent_{current_date}_{generate_short_hash(data)}" for data in wait_data]
+    approve_references = [f"Godkend_{generate_short_hash(data)}" for data in approve_data]
+    delete_references = [f"Slet_{generate_short_hash(data)}" for data in delete_data]
+    wait_references = [f"Vent_{generate_short_hash(data)}" for data in wait_data]
 
     orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=approve_references, data=approve_data_json)
     orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=delete_references, data=delete_data_json)
