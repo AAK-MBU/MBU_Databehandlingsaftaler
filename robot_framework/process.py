@@ -17,10 +17,10 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         connection_string = os.getenv('DbConnectionString') # For testing
         oc_args_json = json.loads(orchestrator_connection.process_arguments)
         process_arg = oc_args_json['process']
-        notification_mail = oc_args_json['notification_mail']
 
         if process_arg == 'create_overview':
             base_dir = oc_args_json['base_dir']
+            notification_mail = oc_args_json['notification_mail']
             orchestrator_connection.log_trace("Starting overview creation.")
             run_overview_creation(base_dir, connection_string, notification_mail)
             orchestrator_connection.log_trace("Overview creation completed.")
@@ -53,3 +53,11 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         orchestrator_connection.log_trace(f"Database error: {str(e)}")
     except ValueError as e:
         orchestrator_connection.log_trace(f"Value error: {str(e)}")
+
+
+if __name__ == '__main__':
+        # json_args = '{"process": "delete_queue"}'
+    # json_args = '{"process": "queue_upload", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata"}'
+    json_args = '{"process": "create_overview", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata", "notification_mail": "krlah@aarhus.dk"}'
+    oc = OrchestratorConnection("Dataaftaler - test", os.getenv('OpenOrchestratorConnStringTest'), os.getenv('OpenOrchestratorKeyTest'), json_args)
+    process(oc)
