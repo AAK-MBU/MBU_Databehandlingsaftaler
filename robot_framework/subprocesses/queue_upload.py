@@ -44,38 +44,33 @@ def retrieve_changes(base_dir):
     delete_data = filtered_delete_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
     wait_data = filtered_wait_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
 
+    # Print all data to be uploaded
+    print("DATA RETRIVED FROM EXCEL FILE")
+    print("Approve data:")
+    for data in approve_data:
+        print(data)
+    print("\nDelete data:")
+    for data in delete_data:
+        print(data)
+    print("\nWait data:")
+    for data in wait_data:
+        print(data)
+
     return approve_data, delete_data, wait_data
 
 
 def generate_short_hash(data, length=8):
-    """
-    Generate a short hash based on input data.
-
-    Args:
-        data (str): The data to generate the hash from.
-        length (int): The length of the desired hash.
-
-    Returns:
-        str: The short hash.
-    """
+    """Generates a short hash from the given data."""
     if isinstance(data, dict):
         data = json.dumps(data, sort_keys=True)
     hash_object = hashlib.md5(data.encode())
-    return hash_object.hexdigest()[:length] 
+    short_hash = hash_object.hexdigest()[:length]
+    print(f"Generated hash: {short_hash} for data: {data}")
+    return short_hash
+
 
 def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection):
-    """
-    Uploads the processed data to a queue in the Orchestrator.
-
-    Args:
-        approve_data (list of dict): List of dictionaries containing Aftaler to be approved.
-        delete_data (list of dict): List of dictionaries containing Aftaler to be deleted.
-        wait_data (list of dict): List of dictionaries containing Aftaler to be waiting.
-        orchestrator_connection (OrchestratorConnection): An instance of the OrchestratorConnection used to interact with the Orchestrator.
-
-    Returns:
-        None
-    """
+    """Uploads the given data to the Databehandlingsaftale_Status_Queue in Orchestrator."""
     approve_data_json = [json.dumps(data) for data in approve_data]
     delete_data_json = [json.dumps(data) for data in delete_data]
     wait_data_json = [json.dumps(data) for data in wait_data]
@@ -84,6 +79,40 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     delete_references = [f"Slet_{generate_short_hash(data)}" for data in delete_data]
     wait_references = [f"Vent_{generate_short_hash(data)}" for data in wait_data]
 
-    orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=approve_references, data=approve_data_json)
-    orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=delete_references, data=delete_data_json)
-    orchestrator_connection.bulk_create_queue_elements("Databehandlingsaftale_Status_Queue", references=wait_references, data=wait_data_json)
+    print(f"Approve References: {approve_references}")
+    print(f"Delete References: {delete_references}")
+    print(f"Wait References: {wait_references}")
+
+    try:
+        print("Uploading Godkend data to queue...")
+        orchestrator_connection.bulk_create_queue_elements(
+            "Databehandlingsaftale_Status_Queue",
+            references=approve_references,
+            data=approve_data_json
+        )
+        print("Successfully uploaded Godkend data.")
+
+        if delete_references:
+            print("Uploading Slet data to queue...")
+            orchestrator_connection.bulk_create_queue_elements(
+                "Databehandlingsaftale_Status_Queue",
+                references=delete_references,
+                data=delete_data_json
+            )
+            print("Successfully uploaded Slet data.")
+        else:
+            print("No references to upload for Slet data.")
+
+        if wait_references:
+            print("Uploading Vent data to queue...")
+            orchestrator_connection.bulk_create_queue_elements(
+                "Databehandlingsaftale_Status_Queue",
+                references=wait_references,
+                data=wait_data_json
+            )
+            print("Successfully uploaded Vent data.")
+        else:
+            print("No references to upload for Vent data.")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")

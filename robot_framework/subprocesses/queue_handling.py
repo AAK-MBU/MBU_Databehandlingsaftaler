@@ -2,7 +2,6 @@
 
 from time import sleep
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -12,16 +11,7 @@ import json
 
 
 def run_queue_handling(queue_elements, orchestrator_connection):
-    """
-    Handle the queue elements. Process each element based on its reference type: Godkend, Slet, or Vent.
-
-    Args:
-        queue_elements (list of dict): The queue elements to handle.
-        orchestrator_connection: The connection object to update the queue status.
-
-    Returns:
-        None
-    """
+    """Handle the queue elements. Process each element based on its reference type: Godkend, Slet, or Vent."""
     browser = webdriver.Chrome()
     try:
         open_stil_connection(browser)
@@ -32,6 +22,7 @@ def run_queue_handling(queue_elements, orchestrator_connection):
         print(f"Error: {str(e)}")
     finally:
         browser.quit()
+
 
 def process_queue_element(browser, queue_element, orchestrator_connection):
     """Process an individual queue element."""
@@ -76,7 +67,7 @@ def handle_data_access(browser, element_data, ref, orchestrator_connection, queu
     service_navn = element_data['serviceNavn']
     status = element_data['status']
 
-    table = WebDriverWait(browser, 10).until(
+    table = WebDriverWait(browser, 30).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, 'table.stil-tabel'))
     )
 
@@ -87,45 +78,63 @@ def handle_data_access(browser, element_data, ref, orchestrator_connection, queu
 
         if system_navn in column_texts and service_navn in column_texts and status in column_texts:
             if ref.startswith('Godkend') and status == 'VENTER':
-                change_status(browser, "Sætter status til Godkendt", "GODKENDT", orchestrator_connection, queue_element, "Aftale godkendt.")
+                change_status(browser, orchestrator_connection, queue_element, column_texts)
             elif ref.startswith('Vent') and status == 'GODKENDT':
-                change_status(browser, "Sætter status til Venter", "VENTER", orchestrator_connection, queue_element, "Aftale sat til venter.")
+                change_status(browser, orchestrator_connection, queue_element, column_texts)
             elif ref.startswith('Slet') and status != 'SLETTET':
+                print("Sletting agreement...")
                 delete_agreement(browser, system_navn, service_navn, status, orchestrator_connection, queue_element)
             break
 
 
-def change_status(browser, action_title, expected_status, orchestrator_connection, queue_element, success_message):
+def change_status(browser, orchestrator_connection, queue_element, column_texts):
     """Change the status (Godkend or Venter) of an agreement."""
+    expected_status = "GODKENDT" if queue_element.reference.startswith('Vent') else "VENTER"
     try:
-        WebDriverWait(browser, 20).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, f'button.hand.margleft10.stil-primary-button.button[title="{action_title}"]'))
+        WebDriverWait(browser, 50).until(
+            EC.element_to_be_clickable((By.XPATH, '//img[@src="img/ic_apps_24px.svg" and contains(@class, "hand") and contains(@class, "dataadgang-status-knap") and @title="Skift status"]'))
         ).click()
 
-        table = WebDriverWait(browser, 10).until(
+        # Commented out for testing purposes
+        # if (queue_element.reference.startswith('Vent')):
+        #     WebDriverWait(browser, 50).until(    
+        #         EC.element_to_be_clickable((By.XPATH, '//button[@title="Sætter status til Venter" and contains(@class, "hand") and contains(@class, "margleft10") and contains(@class, "stil-primary-button") and contains(@class, "button")]'))
+        #     ).click()
+
+        # if (queue_element.reference.startswith('Godkend')):
+        #     WebDriverWait(browser, 50).until(
+        #         EC.element_to_be_clickable((By.XPATH, '//button[@title="Sætter status til Godkendt" and contains(@class, "hand") and contains(@class, "margleft10") and contains(@class, "stil-primary-button") and contains(@class, "button")]'))
+        #     ).click()
+
+        sleep(10)
+        print("CLICK")
+
+        WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'table.stil-tabel'))
         )
 
-        rows = table.find_elements(By.TAG_NAME, 'tr')
-        for row in rows:
-            columns = row.find_elements(By.TAG_NAME, 'td')
-            if expected_status in [col.text for col in columns]:
-                orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE, message=success_message)
-                break
+        if expected_status not in column_texts:
+            orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE)
+        else:
+            orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED)
     except TimeoutException:
         print(f"Failed to change status for queue element {queue_element.id}")
+        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED)
 
 
 def delete_agreement(browser, system_navn, service_navn, status, orchestrator_connection, queue_element):
     """Delete an agreement."""
     try:
         WebDriverWait(browser, 20).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, 'img.tableImg.hand.dataadgang-slet[title="Slet dataadgang"]'))
+            EC.element_to_be_clickable((By.XPATH, '//img[@src="img/ic_delete_24px.svg" and @title="Slet dataadgang" and contains(@class, "tableImg") and contains(@class, "hand") and contains(@class, "dataadgang-slet")]'))
         ).click()
 
-        WebDriverWait(browser, 50).until(
-            EC.element_to_be_clickable((By.XPATH, "//div[@class='react-confirm-alert-button-group']/button[text()='Slet']"))
-        ).click()
+        sleep(10)
+        print("CLICK")
+
+        # WebDriverWait(browser, 50).until(
+        #     EC.element_to_be_clickable((By.XPATH, '//button[text()="Slet"]'))
+        # ).click()
 
         table = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'table.stil-tabel'))
@@ -134,11 +143,15 @@ def delete_agreement(browser, system_navn, service_navn, status, orchestrator_co
         for row in rows:
             columns = row.find_elements(By.TAG_NAME, 'td')
             column_texts = [col.text for col in columns]
-            if system_navn not in column_texts and service_navn not in column_texts and status not in column_texts:
-                orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE, message="Aftale slettet.")
+        
+        if system_navn not in column_texts and service_navn not in column_texts and status not in column_texts:
+            orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE, message="Aftale slettet.")
+        else:
+            orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED)
 
     except TimeoutException:
         print(f"Failed to delete agreement for queue element {queue_element.id}")
+        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED)
 
 
 def close_notifications_popup(browser):
@@ -177,6 +190,8 @@ def open_stil_connection(browser):
         browser.quit()
         exit(1)
 
+
 def switch_to_new_tab(browser):
+    """Switch to the newly opened tab in the browser."""
     if len(browser.window_handles) > 1:
         browser.switch_to.window(browser.window_handles[1])
