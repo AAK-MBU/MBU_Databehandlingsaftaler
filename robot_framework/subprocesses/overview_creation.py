@@ -5,6 +5,7 @@ import os
 import time
 import shutil
 import pyodbc
+import sys
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -86,7 +87,7 @@ def open_stil_connection(browser):
     except (TimeoutException, NoSuchElementException) as e:
         print(f"Error during login: {str(e)}")
         browser.quit()
-        exit(1)
+        sys.exit(1)
 
 
 def switch_to_new_tab(browser):
@@ -200,103 +201,108 @@ def process_organisation(browser, org, organisation_name, base_dir, result_df, e
             click_element_with_retries(browser, By.XPATH, f"//*[contains(text(), '{org.InstRegNr}')]")
             print(f"Clicked row for {org.InstRegNr}...")
 
-            # Handle the notification popup if present
-            try:
-                notifications_close_button = WebDriverWait(browser, 5).until(
-                    EC.element_to_be_clickable((By.ID, "udbyder-close-button"))
-                )
-                if notifications_close_button:
-                    print("Notification popup found.")
-                    handle_notifications_popup(browser, notification_mail)
-                    print("Notification popup handled.")
-            except TimeoutException:
-                print("Notification popup did not appear or was handled already.")
+            result_df = process_data_for_organisation(browser, org, organisation_name, base_dir, result_df, error_log, notification_mail, attempt)
+            if result_df is not None:
+                return result_df  # Successfully processed
+            attempt += 1
 
-                # Attempt to click Dataadministration link if popup not handled
-                if not click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a"):
-                    error_message = f"ERROR: Dataadministration button not found for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
-                    error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                    attempt += 1
-                    continue
-
-            # Check if there are any data requests for the organisation
-            try:
-                WebDriverWait(browser, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "table"))
-                )
-                table_text = browser.find_element(By.TAG_NAME, 'body').text
-                if "Endnu ingen forespørgsler på dataadgange." in table_text:
-                    print(f"No data requests for organisation: {organisation_name}, InstRegNr: {org.InstRegNr}. Skipping processing.")
-                    return result_df
-            except TimeoutException:
-                print("Timeout while waiting for table to load.")
-
-            # Retry up to 3 times to click the export button and download the file
-            if not click_element_with_retries(browser, By.CSS_SELECTOR, "button.stil-primary-button.hand.eksport-button"):
-                error_message = f"ERROR: Export button not found for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}. No file downloaded."
-                error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                attempt += 1
-                continue
-
-            download_dir = os.path.join(base_dir, "Exports")
-            processed_dir = os.path.join(download_dir, "processed")
-            os.makedirs(processed_dir, exist_ok=True)
-
-            if wait_for_download_completion(download_dir):
-                files_in_dir = [os.path.join(download_dir, f) for f in os.listdir(download_dir)]
-                if not files_in_dir:
-                    error_message = f"No files found in {download_dir} for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
-                    error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                    attempt += 1
-                    continue
-
-                latest_file = max(files_in_dir, key=os.path.getctime)
-                if os.path.isfile(latest_file):
-                    instregnr = org.InstRegNr
-                    df = add_columns_to_dataframe(latest_file, instregnr, organisation_name)
-                    print("                                                                                         Columns added to the dataframe... Number of rows added: ", len(df.index))
-
-                    if df is not None and not df.empty:
-                        result_df = pd.concat([result_df, df], ignore_index=True)
-
-                        # Move file to processed directory
-                        try:
-                            file_name = f"{org.InstRegNr}_{organisation_name}_processed.csv"
-                            new_file_path = os.path.join(processed_dir, file_name)
-                            shutil.move(latest_file, new_file_path)
-                            print(f"Moved file to {new_file_path}")
-                            return result_df  # Successfully processed
-                        except PermissionError as e:
-                            error_message = f"Permission error moving file {latest_file} to {processed_dir} on attempt {attempt + 1}: {str(e)}"
-                            error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                            attempt += 1
-                            continue
-                        except FileNotFoundError as e:
-                            error_message = f"[WinError 2] Den angivne fil blev ikke fundet: {str(e)} on attempt {attempt + 1}"
-                            print(error_message)
-                            error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                            attempt += 1
-                            continue
-                    else:
-                        error_message = f"Error processing file {latest_file} for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
-                        error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                        attempt += 1
-                        continue
-                else:
-                    error_message = f"File {latest_file} not found after download on attempt {attempt + 1}. Download might have failed."
-                    error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                    attempt += 1
-                    continue
-            else:
-                error_message = f"ERROR: Download failed or timed out for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
-                error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-                attempt += 1
-                continue
         except (TimeoutException, NoSuchElementException) as e:
             error_message = f"ERROR: Row not found or not clickable for {org.InstRegNr} on attempt {attempt + 1}, Exception: {str(e)}"
             error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
             return result_df  # Exit on unrecoverable error
     return result_df
+
+
+def process_data_for_organisation(browser, org, organisation_name, base_dir, result_df, error_log, notification_mail, attempt):
+    """Handle the data processing logic for an organisation."""
+    try:
+        # Handle the notification popup if present
+        try:
+            notifications_close_button = WebDriverWait(browser, 5).until(
+                EC.element_to_be_clickable((By.ID, "udbyder-close-button"))
+            )
+            if notifications_close_button:
+                print("Notification popup found.")
+                handle_notifications_popup(browser, notification_mail)
+                print("Notification popup handled.")
+        except TimeoutException:
+            print("Notification popup did not appear or was handled already.")
+            if not click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a"):
+                error_message = f"ERROR: Dataadministration button not found for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
+                error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+                return None
+
+        # Check if there are any data requests for the organisation
+        try:
+            WebDriverWait(browser, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "table"))
+            )
+            table_text = browser.find_element(By.TAG_NAME, 'body').text
+            if "Endnu ingen forespørgsler på dataadgange." in table_text:
+                print(f"No data requests for organisation: {organisation_name}, InstRegNr: {org.InstRegNr}. Skipping processing.")
+                return result_df
+        except TimeoutException:
+            print("Timeout while waiting for table to load.")
+
+        # Retry to click the export button and download the file
+        if not click_element_with_retries(browser, By.CSS_SELECTOR, "button.stil-primary-button.hand.eksport-button"):
+            error_message = f"ERROR: Export button not found for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}. No file downloaded."
+            error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+            return None
+
+        download_dir = os.path.join(base_dir, "Exports")
+        processed_dir = os.path.join(download_dir, "processed")
+        os.makedirs(processed_dir, exist_ok=True)
+
+        if wait_for_download_completion(download_dir):
+            files_in_dir = [os.path.join(download_dir, f) for f in os.listdir(download_dir)]
+            if not files_in_dir:
+                error_message = f"No files found in {download_dir} for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
+                error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+                return None
+
+            latest_file = max(files_in_dir, key=os.path.getctime)
+            if os.path.isfile(latest_file):
+                instregnr = org.InstRegNr
+                df = add_columns_to_dataframe(latest_file, instregnr, organisation_name)
+                print("Columns added to the dataframe... Number of rows added: ", len(df.index))
+
+                if df is not None and not df.empty:
+                    result_df = pd.concat([result_df, df], ignore_index=True)
+
+                    # Move file to processed directory
+                    try:
+                        file_name = f"{org.InstRegNr}_{organisation_name}_processed.csv"
+                        new_file_path = os.path.join(processed_dir, file_name)
+                        shutil.move(latest_file, new_file_path)
+                        print(f"Moved file to {new_file_path}")
+                        return result_df  # Successfully processed
+                    except PermissionError as e:
+                        error_message = f"Permission error moving file {latest_file} to {processed_dir} on attempt {attempt + 1}: {str(e)}"
+                        error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+                        return None
+                    except FileNotFoundError as e:
+                        error_message = f"[WinError 2] Den angivne fil blev ikke fundet: {str(e)} on attempt {attempt + 1}"
+                        print(error_message)
+                        error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+                        return None
+                else:
+                    error_message = f"Error processing file {latest_file} for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
+                    error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+                    return None
+            else:
+                error_message = f"File {latest_file} not found after download on attempt {attempt + 1}. Download might have failed."
+                error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+                return None
+        else:
+            error_message = f"ERROR: Download failed or timed out for organisation: {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}."
+            error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+            return None
+    except (TimeoutException, NoSuchElementException) as e:
+        error_message = f"ERROR: Row not found or not clickable for {org.InstRegNr} on attempt {attempt + 1}, Exception: {str(e)}"
+        error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
+        return None
+
 
 
 def save_overview(result_df, base_dir, error_log):
@@ -332,8 +338,7 @@ def save_overview(result_df, base_dir, error_log):
                 column = col[0].column_letter
                 for cell in col:
                     try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
+                        max_length = max(max_length, len(str(cell.value)))
                     except (TypeError, ValueError):
                         pass
                 adjusted_width = min(max_length + 2, max_column_width)

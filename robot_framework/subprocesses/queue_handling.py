@@ -8,6 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from OpenOrchestrator.database.queues import QueueStatus
+from .overview_creation import open_stil_connection
 
 
 def run_queue_handling(queue_elements, orchestrator_connection):
@@ -164,33 +165,6 @@ def close_notifications_popup(browser):
         ).click()
     except TimeoutException:
         print("No notification popup found or close button not clickable.")
-
-
-def open_stil_connection(browser):
-    """Opens STIL and waits for user to log in."""
-
-    browser.get("https://tilslutning.stil.dk/tilslutning/login")
-    try:
-        WebDriverWait(browser, 60).until(EC.presence_of_element_located((By.ID, "LoginMenuItem_2"))).click()
-        switch_to_new_tab(browser)
-        WebDriverWait(browser, 60).until(
-            EC.presence_of_element_located((By.ID, "ddlLocalIdPOrganization-input"))
-        ).send_keys("Aarhus Kommune, 55133018, Aarhus Kommune")
-
-        browser.find_element(By.ID, "ddlLocalIdPOrganization-input").click()
-        browser.find_element(By.ID, "btnSubmit").click()
-
-        print("Waiting for user to login...")
-
-        WebDriverWait(browser, 300).until(
-            EC.element_to_be_clickable((By.ID, "organisation-search"))
-        )
-        print("Login successful... Robot continues...")
-
-    except (TimeoutException, NoSuchElementException) as e:
-        print(f"Error during login: {str(e)}")
-        browser.quit()
-        exit(1)
 
 
 def switch_to_new_tab(browser):
