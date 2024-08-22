@@ -12,16 +12,16 @@ def retrieve_changes(base_dir):
 
     Args:
         base_dir (str): The base directory for all Dataaftaler-processes.
-    
+
     Returns:
         tuple: A tuple containing three lists of dictionaries:
             - approve_data (list of dict): Aftaler to be marked as GODKENDT in STIL.
             - delete_data (list of dict): Aftaler to be marked as SLETTET in STIL.
             - wait_data (list of dict): Aftaler to marked as VENTER in STIL.
-    
+
     Raises:
         ValueError: If there is more than one Oversigt excel files in the 'Output' directory.
-    
+
     Notes:
         - The function expects an 'Output' folder inside the given base directory containing exactly one Excel file.
         - The Excel file must have columns 'statusændring', 'status', 'Organisation', 'Instregnr', 'systemNavn', and 'serviceNavn'.

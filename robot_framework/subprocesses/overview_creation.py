@@ -401,7 +401,6 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
         if missing_instregnr:
             error_message = f"ERROR: The following InstRegNr were expected but not processed: {', '.join(missing_instregnr)}"
             print(error_message)
-            error_log.append("")
             error_log.append("FINAL CHECK. THE FOLLOWING ORGANISATIONS WERE NOT FOUND IN OVERVIEW")
             for instregnr in missing_instregnr:
                 error_log.append({'InstRegNr': instregnr, 'Organisation': 'Unknown', 'Error': 'File not found in overview.'})
