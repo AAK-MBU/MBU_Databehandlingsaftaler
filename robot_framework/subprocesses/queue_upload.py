@@ -1,12 +1,9 @@
 """This module handles retrieving changes in dataaftaler and uploading them to queue."""
-import pandas as pd
 import os
 import glob
-from datetime import datetime
 import json
 import hashlib
-
-from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
+import pandas as pd
 
 
 def retrieve_changes(base_dir):
@@ -114,5 +111,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         else:
             print("No references to upload for Vent data.")
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    except ValueError as ve:
+        print(f"A value error occurred: {ve}")
+    except TypeError as te:
+        print(f"A type error occurred: {te}")

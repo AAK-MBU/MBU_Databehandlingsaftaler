@@ -1,13 +1,13 @@
 """ This module handle the queue elements for changing their status in STIL."""
 
 from time import sleep
+import json
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from OpenOrchestrator.database.queues import QueueStatus
-import json
 
 
 def run_queue_handling(queue_elements, orchestrator_connection):
@@ -15,11 +15,13 @@ def run_queue_handling(queue_elements, orchestrator_connection):
     browser = webdriver.Chrome()
     try:
         open_stil_connection(browser)
-        
+
         for queue_element in queue_elements:
             process_queue_element(browser, queue_element, orchestrator_connection)
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    except TimeoutException as e:
+        print(f"Timeout error: {str(e)}")
+    except NoSuchElementException as e:
+        print(f"No such element error: {str(e)}")
     finally:
         browser.quit()
 
@@ -43,7 +45,7 @@ def navigate_to_data_access_admin(browser, org, instregnr):
     """Navigate to the 'Dataadgangadministration' section for the given organization and institution number."""
 
     browser.get("https://tilslutning.stil.dk/tilslutning?select-organisation=true")
-    
+
     if org == 'Dagtilbud':
         WebDriverWait(browser, 20).until(
             EC.element_to_be_clickable((By.ID, "dagtilbud-tab-button"))
@@ -54,7 +56,7 @@ def navigate_to_data_access_admin(browser, org, instregnr):
     ).click()
 
     close_notifications_popup(browser)
-    
+
     WebDriverWait(browser, 20).until(
         EC.element_to_be_clickable((By.LINK_TEXT, "Dataadgangadministration"))
     ).click()
@@ -97,7 +99,7 @@ def change_status(browser, orchestrator_connection, queue_element, column_texts)
 
         # Commented out for testing purposes
         # if (queue_element.reference.startswith('Vent')):
-        #     WebDriverWait(browser, 50).until(    
+        #     WebDriverWait(browser, 50).until(
         #         EC.element_to_be_clickable((By.XPATH, '//button[@title="Sætter status til Venter" and contains(@class, "hand") and contains(@class, "margleft10") and contains(@class, "stil-primary-button") and contains(@class, "button")]'))
         #     ).click()
 
@@ -143,7 +145,7 @@ def delete_agreement(browser, system_navn, service_navn, status, orchestrator_co
         for row in rows:
             columns = row.find_elements(By.TAG_NAME, 'td')
             column_texts = [col.text for col in columns]
-        
+
         if system_navn not in column_texts and service_navn not in column_texts and status not in column_texts:
             orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE, message="Aftale slettet.")
         else:

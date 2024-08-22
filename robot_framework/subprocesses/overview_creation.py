@@ -1,19 +1,18 @@
-""" This module automates the process of extracting data from STIL and 
+""" This module automates the process of extracting data from STIL and
 generates an overview. Export of results and errors to an Excel file and log files."""
 from datetime import datetime
 import os
-import pandas as pd
-import pyodbc
 import time
 import shutil
+import pyodbc
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
 from openpyxl.worksheet.datavalidation import DataValidation
-from selenium.common.exceptions import StaleElementReferenceException
 
 
 def initialize_browser(base_dir):
@@ -39,8 +38,10 @@ def clear_base_directory(base_dir):
             print(f"Successfully cleared the directory: {base_dir}")
         else:
             print(f"The directory {base_dir} does not exist.")
-    except Exception as e:
-        print(f"Error while clearing the directory {base_dir}: {e}")
+    except TimeoutException as e:
+        print(f"Timeout error: {e}")
+    except NoSuchElementException as e:
+        print(f"Element not found error: {e}")
 
 
 def wait_for_download_completion(download_dir, timeout=60, retries=3):
@@ -100,8 +101,8 @@ def fetch_aftaler(connection_string):
         cursor = connection.cursor()
 
         cursor.execute("""
-            SELECT [InstRegNr], [Organisation] 
-            FROM [RPA].[rpa].[MBU003Dataaftaler] 
+            SELECT [InstRegNr], [Organisation]
+            FROM [RPA].[rpa].[MBU003Dataaftaler]
             WHERE Organisation IN ('Dagtilbud', 'Institutioner')
         """)
         rows = cursor.fetchall()
@@ -120,8 +121,14 @@ def add_columns_to_dataframe(file_path, instregnr, organisation):
         df['Organisation'] = organisation
 
         return df
-    except Exception as e:
-        print(f"Error processing file {file_path}: {e}")
+    except FileNotFoundError as e:
+        print(f"File not found error: {e}")
+        return None
+    except pd.errors.ParserError as e:
+        print(f"Error parsing file {file_path}: {e}")
+        return None
+    except pd.errors.EmptyDataError as e:
+        print(f"Empty data error: {e}")
         return None
 
 
@@ -150,7 +157,7 @@ def handle_notifications_popup(browser, notification_mail):
         if not click_element_with_retries(browser, By.LINK_TEXT, 'Tilføj kontaktoplysninger'):
             print("Failed to click 'Tilføj kontaktoplysninger'.")
             return
-        
+
         email_field = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.ID, 'notifikation-email'))
         )
@@ -160,11 +167,11 @@ def handle_notifications_popup(browser, notification_mail):
                 print("Failed to click 'Opret Notifikation' button.")
         else:
             print("Email field not found!")
-        
+
         print("Trying to close the notification popup")
         if not click_element_with_retries(browser, By.XPATH, "//button[contains(text(), 'Luk')]"):
             print("Failed to close the notification popup.")
-            
+
     except (TimeoutException, StaleElementReferenceException) as e:
         print(f"Error handling notification popup: {e}")
 
@@ -178,7 +185,7 @@ def process_organisation(browser, org, organisation_name, base_dir, result_df, e
         try:
             print(f"Processing organisation: {organisation_name}, InstRegNr: {org.InstRegNr}")
             browser.get('https://tilslutning.stil.dk/tilslutning?select-organisation=true')
-            
+
             if organisation_name == "Dagtilbud":
                 print("Switching to Dagtilbud tab...")
                 dagtilbud_button = WebDriverWait(browser, 20).until(
@@ -244,14 +251,14 @@ def process_organisation(browser, org, organisation_name, base_dir, result_df, e
                     continue
 
                 latest_file = max(files_in_dir, key=os.path.getctime)
-                if os.path.isfile(latest_file): 
+                if os.path.isfile(latest_file):
                     instregnr = org.InstRegNr
                     df = add_columns_to_dataframe(latest_file, instregnr, organisation_name)
                     print("                                                                                         Columns added to the dataframe... Number of rows added: ", len(df.index))
-                    
+
                     if df is not None and not df.empty:
                         result_df = pd.concat([result_df, df], ignore_index=True)
-                        
+
                         # Move file to processed directory
                         try:
                             file_name = f"{org.InstRegNr}_{organisation_name}_processed.csv"
@@ -297,19 +304,19 @@ def save_overview(result_df, base_dir, error_log):
     output_dir = os.path.join(base_dir, "Output")
     os.makedirs(output_dir, exist_ok=True)
     output_filename = "Dataaftaler_Oversigt_" + datetime.now().strftime('%d%m%Y') + ".xlsx"
-    
+
     if not result_df.empty:
         result_df.insert(18, 'statusændring', '')
         result_df.sort_values(by='Instregnr', inplace=True)
         output_path = os.path.join(output_dir, output_filename)
-        
+
         with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             result_df.to_excel(writer, index=False, sheet_name='Oversigt')
             worksheet = writer.sheets['Oversigt']
             worksheet.auto_filter.ref = worksheet.dimensions
 
             for row in range(2, worksheet.max_row + 1):
-                status_cell = worksheet[f'R{row}'] 
+                status_cell = worksheet[f'R{row}']
                 statusændring_cell = worksheet[f'S{row}']  # 'statusændring' is in column S
                 if status_cell.value != "SLETTET":
                     dv = DataValidation(type="list", formula1='"GODKEND, SLET, VENT"')
@@ -319,7 +326,7 @@ def save_overview(result_df, base_dir, error_log):
                     dv.add(statusændring_cell)
 
             # Adjust column widths but limit the max width
-            max_column_width = 30 
+            max_column_width = 30
             for col in worksheet.columns:
                 max_length = 0
                 column = col[0].column_letter
@@ -327,7 +334,7 @@ def save_overview(result_df, base_dir, error_log):
                     try:
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 adjusted_width = min(max_length + 2, max_column_width)
                 worksheet.column_dimensions[column].width = adjusted_width
@@ -346,7 +353,7 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
 
     # Clear the base directory before processing
     clear_base_directory(base_dir)
-    
+
     # Create necessary directories again
     os.makedirs(os.path.join(base_dir, "Exports"), exist_ok=True)
     os.makedirs(os.path.join(base_dir, "Output"), exist_ok=True)
@@ -372,19 +379,23 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
         print("Processing institutioner tab...")
         for org in table_institution:
             result_df = process_organisation(browser, org, "Institutioner", base_dir, result_df, error_log, notification_mail)
-        
+
         print("Processing dagtilbud tab...")
         for org in table_dagtilbud:
             result_df = process_organisation(browser, org, "Dagtilbud", base_dir, result_df, error_log, notification_mail)
-        
-    except Exception as e:
-        # Log any unexpected errors that occur during the execution
-        error_message = f"Unexpected error occurred: {str(e)}"
+
+    except TimeoutException as e:
+        error_message = f"Timeout error occurred: {str(e)}"
+        print(error_message)
+        error_log.append({'InstRegNr': 'N/A', 'Organisation': 'N/A', 'Error': error_message})
+    except NoSuchElementException as e:
+        error_message = f"Element not found error occurred: {str(e)}"
         print(error_message)
         error_log.append({'InstRegNr': 'N/A', 'Organisation': 'N/A', 'Error': error_message})
 
     finally:
         # Verify if all expected InstRegNr have been processed
+        expected_instregnr = set()
         unique_instregnr_in_results = set(result_df['Instregnr'].unique())
         missing_instregnr = expected_instregnr - unique_instregnr_in_results
         if missing_instregnr:
