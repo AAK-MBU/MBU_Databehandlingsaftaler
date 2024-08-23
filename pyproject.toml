@@ -17,6 +17,8 @@ dependencies = [
     "OpenOrchestrator == 1.*",
     "Pillow == 9.5.0",
     "selenium == 4.23.1",
+    "pandas",
+    "openpyxl",
 ]
 
 [project.optional-dependencies]
