@@ -5,9 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "robot_framework"
 version = "0.0.1"
-authors = [
-  { name="ITK Development", email="itk-rpa@mkb.aarhus.dk" },
-]
+
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
