@@ -53,11 +53,3 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         orchestrator_connection.log_trace(f"Database error: {str(e)}")
     except ValueError as e:
         orchestrator_connection.log_trace(f"Value error: {str(e)}")
-
-
-if __name__ == '__main__':
-        # json_args = '{"process": "delete_queue"}'
-    # json_args = '{"process": "queue_upload", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata"}'
-    json_args = '{"process": "create_overview", "base_dir": "C:\\\\Users\\\\az77879\\\\OneDrive - Aarhus kommune\\\\MergeCvs_dataaftaler_testdata", "notification_mail": "krlah@aarhus.dk"}'
-    oc = OrchestratorConnection("Dataaftaler - test", os.getenv('OpenOrchestratorConnStringTest'), os.getenv('OpenOrchestratorKeyTest'), json_args)
-    process(oc)
