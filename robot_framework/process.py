@@ -53,4 +53,4 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         orchestrator_connection.log_trace(f"Database error: {str(e)}")
     except ValueError as e:
         orchestrator_connection.log_trace(f"Value error: {str(e)}")
-        
+
