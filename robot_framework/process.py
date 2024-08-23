@@ -14,7 +14,7 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
 
     try:
         # connection_string = orchestrator_connection.get_constant('DbConnectionString').value
-        connection_string = os.getenv('DbConnectionString') # For testing
+        connection_string = os.getenv('DbConnectionString')  # For testing
         oc_args_json = json.loads(orchestrator_connection.process_arguments)
         process_arg = oc_args_json['process']
 
