@@ -23,8 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pylint",
-  "flake8",
   "pandas",
   "openpyxl",
+  "pylint",
+  "flake8",
 ]

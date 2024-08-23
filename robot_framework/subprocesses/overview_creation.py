@@ -274,10 +274,9 @@ def process_data_for_organisation(browser, org, organisation_name, base_dir, res
             return log_error(f"Error moving file {latest_file} on attempt {attempt + 1}: {str(e)}")
 
     def log_error(error_message):
-        """Logs the error and returns None."""
+        """Logs the error."""
         error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
         print(error_message)
-        return None
 
     try:
         if not handle_notification_and_click(browser):
