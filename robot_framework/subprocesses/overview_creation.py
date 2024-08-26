@@ -23,6 +23,7 @@ def initialize_browser(base_dir):
     chrome_options = Options()
     prefs = {
         "download.default_directory": download_dir,
+        "profile.content_settings.exceptions.automatic_downloads.*.setting": 1,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
         "safebrowsing.enabled": False
