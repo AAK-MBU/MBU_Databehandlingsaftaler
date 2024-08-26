@@ -185,7 +185,7 @@ def handle_notifications_popup(browser, notification_mail):
 
 def process_organisation(browser, org, organisation_name, base_dir, result_df, error_log, notification_mail):
     """Process an organisation in STIL and download the data file."""
-    max_attempts = 6  # Maximum number of retry attempts
+    max_attempts = 3  # Maximum number of retry attempts
     attempt = 0  # Current attempt
 
     while attempt < max_attempts:
@@ -226,7 +226,7 @@ def process_data_for_organisation(browser, org, organisation_name, base_dir, res
     def handle_notification_and_click(browser):
         """Handles the notification popup and clicks the necessary elements."""
         try:
-            notifications_close_button = WebDriverWait(browser, 5).until(
+            notifications_close_button = WebDriverWait(browser, 1).until(
                 EC.element_to_be_clickable((By.ID, "udbyder-close-button"))
             )
             if notifications_close_button:
