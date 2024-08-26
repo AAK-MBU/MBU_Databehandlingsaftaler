@@ -29,6 +29,11 @@ def initialize_browser(base_dir):
         "safebrowsing.enabled": False
     }
     chrome_options.add_experimental_option("prefs", prefs)
+    chrome_options.add_argument("test-type")
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--allow-running-insecure-content")
+
     return webdriver.Chrome(options=chrome_options)
 
 
