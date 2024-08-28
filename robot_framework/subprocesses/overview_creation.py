@@ -212,14 +212,16 @@ def enter_organisation(browser, org, organisation_name, base_dir, error_log, not
             if org_df is not None:
                 print("colloumns added to dataframe.............................................................................Rows added to DF = ", len(org_df.index))
                 return org_df  # Successfully processed
+
             attempt += 1
 
         except (TimeoutException, NoSuchElementException) as e:
             error_message = f"ERROR: Row not found or not clickable for {org.InstRegNr} on attempt {attempt + 1}, Exception: {str(e)}"
             error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-            return
+            attempt += 1
+
     print(f"Couldn't find organisation {organisation_name}, InstRegNr: {org.InstRegNr} after {max_attempts} attempts.")
-    return
+    return pd.DataFrame()  # Return an empty DataFrame if no data is found
 
 
 def process_organisation(browser, org, organisation_name, base_dir, error_log, notification_mail, attempt):
