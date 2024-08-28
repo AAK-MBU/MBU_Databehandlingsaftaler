@@ -5,7 +5,7 @@ import pyodbc
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 from robot_framework.subprocesses.overview_creation import run_overview_creation
 from robot_framework.subprocesses.queue_upload import retrieve_changes, upload_to_queue
-from robot_framework.subprocesses.queue_handling import run_queue_handling
+from robot_framework.subprocesses.queue_handling import process_queue_elements
 
 
 def process(orchestrator_connection: OrchestratorConnection) -> None:
@@ -25,30 +25,49 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
             run_overview_creation(base_dir, connection_string, notification_mail)
             orchestrator_connection.log_trace("Overview creation completed.")
 
-        if process_arg == 'queue_upload':
+        elif process_arg == 'upload_and_handle_queue':
+            # Delete all elements in the queue before uploading new ones
             base_dir = oc_args_json['base_dir']
+            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
+            for element in queue_elements:
+                orchestrator_connection.delete_queue_element(element.id)
+
+            # Retrieve changes and upload
             orchestrator_connection.log_trace("Retrieving changes from overview.")
             approve_data, delete_data, wait_data = retrieve_changes(base_dir)
             orchestrator_connection.log_trace("Changes retrieved. Uploading to queue.")
             upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection)
             orchestrator_connection.log_trace("Queue upload completed.")
 
-        if process_arg == 'delete_queue':
-            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
-            for element in queue_elements:
-                orchestrator_connection.delete_queue_element(element.id)
-            orchestrator_connection.log_trace("Databehandlingsaftale_Status_Queue deleted.")
-
-        if process_arg == 'handle_queue':
+            # Handle queue elements
             queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
             if queue_elements:
                 orchestrator_connection.log_trace(f"Handling {len(queue_elements)} queue elements.")
-                run_queue_handling(queue_elements, orchestrator_connection)
+                process_queue_elements(queue_elements, orchestrator_connection)
+                orchestrator_connection.log_trace("Queue handling completed.")
+
+        elif process_arg == 'queue_upload':
+            # Delete all elements in the queue before uploading new ones
+            base_dir = oc_args_json['base_dir']
+            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
+            for element in queue_elements:
+                orchestrator_connection.delete_queue_element(element.id)
+
+            orchestrator_connection.log_trace("Retrieving changes from overview.")
+            approve_data, delete_data, wait_data = retrieve_changes(base_dir)
+            orchestrator_connection.log_trace("Changes retrieved. Uploading to queue.")
+            upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection)
+            orchestrator_connection.log_trace("Queue upload completed.")
+
+        elif process_arg == 'handle_queue':
+            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
+            if queue_elements:
+                orchestrator_connection.log_trace(f"Handling {len(queue_elements)} queue elements.")
+                process_queue_elements(queue_elements, orchestrator_connection)
                 orchestrator_connection.log_trace("Queue handling completed.")
 
         else:
             raise ValueError(f"Invalid process: {process_arg}")
-
     except pyodbc.Error as e:
         orchestrator_connection.log_trace(f"Database error: {str(e)}")
     except ValueError as e:
