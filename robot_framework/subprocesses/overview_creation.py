@@ -139,7 +139,7 @@ def add_columns_to_dataframe(file_path, instregnr, organisation):
         return None
 
 
-def click_element_with_retries(browser, by, value, retries=3):
+def click_element_with_retries(browser, by, value, retries=4):
     """Click an element with retries and handle common exceptions."""
     for attempt in range(retries):
         try:
@@ -183,15 +183,16 @@ def handle_notifications_popup(browser, notification_mail):
         print(f"Error handling notification popup: {e}")
 
 
-def process_organisation(browser, org, organisation_name, base_dir, result_df, error_log, notification_mail):
+def enter_organisation(browser, org, organisation_name, base_dir, error_log, notification_mail):
     """Process an organisation in STIL and download the data file."""
-    max_attempts = 3  # Maximum number of retry attempts
+    max_attempts = 6  # Maximum number of retry attempts
     attempt = 0  # Current attempt
 
     while attempt < max_attempts:
         try:
             print(f"Processing organisation: {organisation_name}, InstRegNr: {org.InstRegNr}")
             browser.get('https://tilslutning.stil.dk/tilslutning?select-organisation=true')
+            browser.refresh()
 
             if organisation_name == "Dagtilbud":
                 print("Switching to Dagtilbud tab...")
@@ -207,34 +208,41 @@ def process_organisation(browser, org, organisation_name, base_dir, result_df, e
             click_element_with_retries(browser, By.XPATH, f"//*[contains(text(), '{org.InstRegNr}')]")
             print(f"Clicked row for {org.InstRegNr}...")
 
-            result_df = process_data_for_organisation(browser, org, organisation_name, base_dir, result_df, error_log, notification_mail, attempt)
-            if result_df is not None:
-                print("colloumns added to dataframe.............................................................................Count Rows = ", len(result_df.index))
-                return result_df  # Successfully processed
+            org_df = process_organisation(browser, org, organisation_name, base_dir, error_log, notification_mail, attempt)
+            if org_df is not None:
+                print("colloumns added to dataframe.............................................................................Rows added to DF = ", len(org_df.index))
+                return org_df  # Successfully processed
             attempt += 1
 
         except (TimeoutException, NoSuchElementException) as e:
             error_message = f"ERROR: Row not found or not clickable for {org.InstRegNr} on attempt {attempt + 1}, Exception: {str(e)}"
             error_log.append({'InstRegNr': org.InstRegNr, 'Organisation': organisation_name, 'Error': error_message})
-            return result_df  # Exit on unrecoverable error
-    return result_df
+            return
+    print(f"Couldn't find organisation {organisation_name}, InstRegNr: {org.InstRegNr} after {max_attempts} attempts.")
+    return
 
 
-def process_data_for_organisation(browser, org, organisation_name, base_dir, result_df, error_log, notification_mail, attempt):
+def process_organisation(browser, org, organisation_name, base_dir, error_log, notification_mail, attempt):
     """Handle the data processing logic for an organisation."""
+    org_df = pd.DataFrame()
 
-    def handle_notification_and_click(browser):
+    def enter_dataadministration(browser):
         """Handles the notification popup and clicks the necessary elements."""
         try:
-            notifications_close_button = WebDriverWait(browser, 1).until(
+            notifications_close_button = WebDriverWait(browser, 2).until(
                 EC.element_to_be_clickable((By.ID, "udbyder-close-button"))
             )
             if notifications_close_button:
                 handle_notifications_popup(browser, notification_mail)
                 return True
+
+            # Refresh the page if not fully loaded
+            if not browser.execute_script("return document.readyState") == "complete":
+                browser.refresh()
+                time.sleep(2)
+
         except TimeoutException:
             pass
-
         return click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a")
 
     def check_data_requests(browser):
@@ -248,7 +256,7 @@ def process_data_for_organisation(browser, org, organisation_name, base_dir, res
         except TimeoutException:
             return True  # Assume there are requests if timeout occurs
 
-    def handle_file_download_and_processing(org, organisation_name, base_dir, result_df, attempt):
+    def handle_file_download_and_processing(org, organisation_name, base_dir, attempt):
         """Handles file download and processing logic."""
         download_dir = os.path.join(base_dir, "Exports")
         processed_dir = os.path.join(download_dir, "processed")
@@ -265,17 +273,15 @@ def process_data_for_organisation(browser, org, organisation_name, base_dir, res
         if not os.path.isfile(latest_file):
             return log_error(f"File {latest_file} not found after download on attempt {attempt + 1}. Download might have failed.")
 
-        df = add_columns_to_dataframe(latest_file, org.InstRegNr, organisation_name)
-        if df is None or df.empty:
+        org_df = add_columns_to_dataframe(latest_file, org.InstRegNr, organisation_name)
+        if org_df is None or org_df.empty:
             return log_error(f"Error processing file {latest_file} for {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}.")
-
-        result_df = pd.concat([result_df, df], ignore_index=True)
 
         try:
             file_name = f"{org.InstRegNr}_{organisation_name}_processed.csv"
             new_file_path = os.path.join(processed_dir, file_name)
             shutil.move(latest_file, new_file_path)
-            return result_df  # Successfully processed
+            return org_df  # Successfully processed
         except (PermissionError, FileNotFoundError) as e:
             return log_error(f"Error moving file {latest_file} on attempt {attempt + 1}: {str(e)}")
 
@@ -285,17 +291,17 @@ def process_data_for_organisation(browser, org, organisation_name, base_dir, res
         print(error_message)
 
     try:
-        if not handle_notification_and_click(browser):
+        if not enter_dataadministration(browser):
             return log_error(f"ERROR: Dataadministration button not found for {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}.")
 
         if not check_data_requests(browser):
             print(f"No data requests for {organisation_name}, InstRegNr: {org.InstRegNr}. Skipping processing.")
-            return result_df
+            return org_df
 
         if not click_element_with_retries(browser, By.CSS_SELECTOR, "button.stil-primary-button.hand.eksport-button"):
             return log_error(f"ERROR: Export button not found for {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}. No file downloaded.")
 
-        return handle_file_download_and_processing(org, organisation_name, base_dir, result_df, attempt)
+        return handle_file_download_and_processing(org, organisation_name, base_dir, attempt)
 
     except (TimeoutException, NoSuchElementException) as e:
         return log_error(f"ERROR: Row not found or not clickable for {org.InstRegNr} on attempt {attempt + 1}, Exception: {str(e)}")
@@ -341,9 +347,11 @@ def save_overview(result_df, base_dir, error_log):
                 worksheet.column_dimensions[column].width = adjusted_width
 
     # Save Error Log
-    output_dir = os.path.join(base_dir, "Output")
     if error_log:
+        print("Saving error log...")
+        output_dir = os.path.join(base_dir, "Output")
         error_log_df = pd.DataFrame(error_log)
+
         error_log_filename = "Error_Log_" + datetime.now().strftime('%d%m%Y') + ".xlsx"
         error_log_path = os.path.join(output_dir, error_log_filename)
         error_log_df.to_excel(error_log_path, index=False, sheet_name='Errors')
@@ -374,16 +382,13 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
 
         table_dagtilbud, table_institution = fetch_aftaler(connection_string)
 
-        # Collect all unique InstRegNr for verification
-        expected_instregnr = {org.InstRegNr for org in table_dagtilbud + table_institution}
-
         print("Processing institutioner tab...")
         for org in table_institution:
-            result_df = process_organisation(browser, org, "Institutioner", base_dir, result_df, error_log, notification_mail)
+            result_df = pd.concat([result_df, enter_organisation(browser, org, "Institutioner", base_dir, error_log, notification_mail)])
 
         print("Processing dagtilbud tab...")
         for org in table_dagtilbud:
-            result_df = process_organisation(browser, org, "Dagtilbud", base_dir, result_df, error_log, notification_mail)
+            result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
 
     except TimeoutException as e:
         error_message = f"Timeout error occurred: {str(e)}"
@@ -396,15 +401,21 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
 
     finally:
         # Verify if all expected InstRegNr have been processed
-        expected_instregnr = set()
-        unique_instregnr_in_results = set(result_df['Instregnr'].unique())
-        missing_instregnr = expected_instregnr - unique_instregnr_in_results
+        expected_instregnr = {org.InstRegNr for org in table_dagtilbud + table_institution}
+
+        if result_df is not None and not result_df.empty:
+            unique_instregnr_in_results = set(result_df['Instregnr'].unique())
+            missing_instregnr = expected_instregnr - unique_instregnr_in_results
+        else:
+            print("ERROR: result_df is None or empty. Cannot verify processed InstRegNr.")
+            missing_instregnr = expected_instregnr
+
         if missing_instregnr:
-            error_message = f"ERROR: The following InstRegNr were expected but not processed: {', '.join(missing_instregnr)}"
-            print(error_message)
-            error_log.append("FINAL CHECK. THE FOLLOWING ORGANISATIONS WERE NOT FOUND IN OVERVIEW")
-            for instregnr in missing_instregnr:
-                error_log.append({'InstRegNr': instregnr, 'Organisation': 'Unknown', 'Error': 'File not found in overview.'})
+            error_log.append({
+                'InstRegNr': 'N/A',
+                'Organisation': 'N/A',
+                'Error': f"{len(missing_instregnr)} InstRegNr were expected but not processed: {', '.join(missing_instregnr)}"
+            })
 
         browser.quit()
         save_overview(result_df, base_dir, error_log)  # Save the final overview and error log
