@@ -81,13 +81,16 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     print(f"Wait References: {wait_references}")
 
     try:
-        print("Uploading Godkend data to queue...")
-        orchestrator_connection.bulk_create_queue_elements(
-            "Databehandlingsaftale_Status_Queue",
-            references=approve_references,
-            data=approve_data_json
-        )
-        print("Successfully uploaded Godkend data.")
+        if approve_data:
+            print("Uploading Godkend data to queue...")
+            orchestrator_connection.bulk_create_queue_elements(
+                "Databehandlingsaftale_Status_Queue",
+                references=approve_references,
+                data=approve_data_json
+            )
+            print("Successfully uploaded Godkend data.")
+        else:
+            print("No data to upload for Godkend data.")
 
         if delete_references:
             print("Uploading Slet data to queue...")
@@ -98,7 +101,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
             )
             print("Successfully uploaded Slet data.")
         else:
-            print("No references to upload for Slet data.")
+            print("No data to upload for Slet data.")
 
         if wait_references:
             print("Uploading Vent data to queue...")
@@ -109,7 +112,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
             )
             print("Successfully uploaded Vent data.")
         else:
-            print("No references to upload for Vent data.")
+            print("No data to upload for Vent data.")
 
     except ValueError as ve:
         print(f"A value error occurred: {ve}")
