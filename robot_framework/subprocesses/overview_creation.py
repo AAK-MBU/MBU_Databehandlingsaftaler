@@ -402,7 +402,7 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
             for org in table_institution:
                 if org.InstRegNr in missing_instregnr:
                     result_df = pd.concat([result_df, pd.DataFrame({'Instregnr': [org.InstRegNr], 'Organisation': ['Institutioner']})])
-            
+
             print("Retrying to process missing dagtilbud...")
             for org in table_dagtilbud:
                 if org.InstRegNr in missing_instregnr:
