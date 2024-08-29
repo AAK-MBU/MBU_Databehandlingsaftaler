@@ -392,6 +392,22 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
         for org in table_dagtilbud:
             result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
 
+        expected_instregnr = {org.InstRegNr for org in table_dagtilbud + table_institution}
+
+        if result_df is not None and not result_df.empty:
+            unique_instregnr_in_results = set(result_df['Instregnr'].unique())
+            missing_instregnr = expected_instregnr - unique_instregnr_in_results
+
+            print("Retrying to process missing institutioner...")
+            for org in table_institution:
+                if org.InstRegNr in missing_instregnr:
+                    result_df = pd.concat([result_df, pd.DataFrame({'Instregnr': [org.InstRegNr], 'Organisation': ['Institutioner']})])
+            
+            print("Retrying to process missing dagtilbud...")
+            for org in table_dagtilbud:
+                if org.InstRegNr in missing_instregnr:
+                    result_df = pd.concat([result_df, pd.DataFrame({'Instregnr': [org.InstRegNr], 'Organisation': ['Dagtilbud']})])
+
     except TimeoutException as e:
         error_message = f"Timeout error occurred: {str(e)}"
         print(error_message)
@@ -417,6 +433,12 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
                 'InstRegNr': 'N/A',
                 'Organisation': 'N/A',
                 'Error': f"{len(missing_instregnr)} InstRegNr were expected but not processed: {', '.join(missing_instregnr)}"
+            })
+        else:
+            error_log.append({
+                'InstRegNr': 'N/A',
+                'Organisation': 'N/A',
+                'Error': "All expected InstRegNr have been processed successfully."
             })
 
         browser.quit()
