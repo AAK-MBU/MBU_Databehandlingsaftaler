@@ -359,6 +359,22 @@ def save_overview(result_df, base_dir, error_log):
         error_log_df.to_excel(error_log_path, index=False, sheet_name='Errors')
 
 
+def retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_dagtilbud, table_institution):
+    """Retry processing missing organisations."""
+    unique_instregnr_in_results = set(result_df['Instregnr'].unique())
+    missing_instregnr = expected_instregnr - unique_instregnr_in_results
+
+    print("Retrying to process missing institutioner...")
+    for org in table_institution:
+        if org.InstRegNr in missing_instregnr:
+            result_df = pd.concat([result_df, enter_organisation(browser, org, "Institutioner", base_dir, error_log, notification_mail)])
+
+    print("Retrying to process missing dagtilbud...")
+    for org in table_dagtilbud:
+        if org.InstRegNr in missing_instregnr:
+            result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
+
+
 def run_overview_creation(base_dir, connection_string, notification_mail):
     """Run the process of creating the overview of dataaftaler."""
 
@@ -392,6 +408,11 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
         for org in table_dagtilbud:
             result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
 
+        expected_instregnr = {org.InstRegNr for org in table_dagtilbud + table_institution}
+
+        if result_df is not None and not result_df.empty:
+            retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_dagtilbud, table_institution)
+
     except TimeoutException as e:
         error_message = f"Timeout error occurred: {str(e)}"
         print(error_message)
@@ -417,6 +438,12 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
                 'InstRegNr': 'N/A',
                 'Organisation': 'N/A',
                 'Error': f"{len(missing_instregnr)} InstRegNr were expected but not processed: {', '.join(missing_instregnr)}"
+            })
+        else:
+            error_log.append({
+                'InstRegNr': 'N/A',
+                'Organisation': 'N/A',
+                'Error': "All expected InstRegNr have been processed successfully."
             })
 
         browser.quit()
