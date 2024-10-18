@@ -8,7 +8,7 @@ import pandas as pd
 
 def clean_instregnr(instregnr):
     """Removes any decimal point and digits after it from Instregnr."""
-    return str(instregnr).split('.')[0]
+    return str(instregnr).split('.', maxsplit=1)[0]
 
 
 def retrieve_changes(base_dir):
