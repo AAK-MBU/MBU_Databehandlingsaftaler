@@ -5,6 +5,6 @@ disable =
   R0913, # Too many arguments
   R0914, # Too many local variables
   R0912, # Too many branches
-  W0718 # Catching too general exception
-  
+  W0718, # Catching too general exception
+  R0915 # Too many statements
 
