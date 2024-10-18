@@ -33,6 +33,7 @@ def initialize_browser(base_dir):
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--disable-web-security")
     chrome_options.add_argument("--allow-running-insecure-content")
+    chrome_options.add_argument("--disable-search-engine-choice-screen")
 
     return webdriver.Chrome(options=chrome_options)
 
@@ -102,7 +103,7 @@ def switch_to_new_tab(browser):
         browser.switch_to.window(browser.window_handles[1])
 
 
-def fetch_aftaler(connection_string):
+def fetch_aftaler(connection_string, organisation):
     """Fetch dataftaler from the database for error handling."""
     with pyodbc.connect(connection_string) as connection:
         cursor = connection.cursor()
@@ -110,14 +111,12 @@ def fetch_aftaler(connection_string):
         cursor.execute("""
             SELECT [InstRegNr], [Organisation]
             FROM [RPA].[rpa].[MBU003Dataaftaler]
-            WHERE Organisation IN ('Dagtilbud', 'Institutioner')
-        """)
+            WHERE Organisation = ?
+        """, organisation)
+
         rows = cursor.fetchall()
 
-        table_dagtilbud = [row for row in rows if row.Organisation == 'Dagtilbud']
-        table_institution = [row for row in rows if row.Organisation == 'Institutioner']
-
-        return table_dagtilbud, table_institution
+        return rows
 
 
 def add_columns_to_dataframe(file_path, instregnr, organisation):
@@ -151,7 +150,7 @@ def click_element_with_retries(browser, by, value, retries=4):
             return True
         except (TimeoutException, ElementClickInterceptedException, StaleElementReferenceException) as e:
             print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(1)
+            time.sleep(2)
     print(f"Failed to click element '{value}' after {retries} attempts")
     return False
 
@@ -161,19 +160,19 @@ def handle_notifications_popup(browser, notification_mail):
     try:
         print("Trying to handle the notification popup")
 
-        if not click_element_with_retries(browser, By.LINK_TEXT, 'Tilføj kontaktoplysninger'):
-            print("Failed to click 'Tilføj kontaktoplysninger'.")
-            return
+        if click_element_with_retries(browser, By.LINK_TEXT, 'Tilføj kontaktoplysninger'):
+            email_field = WebDriverWait(browser, 10).until(
+                EC.presence_of_element_located((By.ID, 'notifikation-email'))
+            )
+            if email_field:
+                email_field.send_keys(notification_mail)
+                if not click_element_with_retries(browser, By.ID, 'opret-notifikation-button'):
+                    print("Failed to click 'Opret Notifikation' button.")
+            else:
+                print("Email field not found!")
 
-        email_field = WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.ID, 'notifikation-email'))
-        )
-        if email_field:
-            email_field.send_keys(notification_mail)
-            if not click_element_with_retries(browser, By.ID, 'opret-notifikation-button'):
-                print("Failed to click 'Opret Notifikation' button.")
         else:
-            print("Email field not found!")
+            print("Failed to click 'Tilføj kontaktoplysninger'.")
 
         print("Trying to close the notification popup")
         if not click_element_with_retries(browser, By.XPATH, "//button[contains(text(), 'Luk')]"):
@@ -185,7 +184,7 @@ def handle_notifications_popup(browser, notification_mail):
 
 def enter_organisation(browser, org, organisation_name, base_dir, error_log, notification_mail):
     """Process an organisation in STIL and download the data file."""
-    max_attempts = 6  # Maximum number of retry attempts
+    max_attempts = 3  # Maximum number of retry attempts
     attempt = 0  # Current attempt
 
     while attempt < max_attempts:
@@ -300,8 +299,27 @@ def process_organisation(browser, org, organisation_name, base_dir, error_log, n
             print(f"No data requests for {organisation_name}, InstRegNr: {org.InstRegNr}. Skipping processing.")
             return org_df
 
-        if not click_element_with_retries(browser, By.CSS_SELECTOR, "button.stil-primary-button.hand.eksport-button"):
-            return log_error(f"ERROR: Export button not found for {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {attempt + 1}. No file downloaded.")
+        for att in range(3):
+            # Try to click the export button
+            if not click_element_with_retries(browser, By.XPATH, "//button[text()='Eksport']"):
+                return log_error(f"ERROR: Export button not found for {organisation_name}, InstRegNr: {org.InstRegNr} on attempt {att + 1}. No file downloaded.")
+
+            # Give some time for the export file to be generated
+            export_confirm = WebDriverWait(browser, 12).until(
+                EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Der blev genereret en ny eksportfil.')]"))
+            )
+
+            # Check if the success message appears
+            if not export_confirm:
+                print(f"No new export file generated. Attempt {att + 1}... Refreshing and retrying.")
+                browser.refresh()
+                time.sleep(3)  # Short wait after refreshing
+            else:
+                print("New export file generated successfully.")
+                break
+        else:
+            # If the loop completes without breaking, log the export failure
+            return log_error(f"ERROR: Export failed for {organisation_name}, InstRegNr: {org.InstRegNr} after 3 download attempts. No file downloaded.")
 
         return handle_file_download_and_processing(org, organisation_name, base_dir, attempt)
 
@@ -359,25 +377,19 @@ def save_overview(result_df, base_dir, error_log):
         error_log_df.to_excel(error_log_path, index=False, sheet_name='Errors')
 
 
-def retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_dagtilbud, table_institution):
+def retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_organisation, organisation_name):
     """Retry processing missing organisations."""
     unique_instregnr_in_results = set(result_df['Instregnr'].unique())
     missing_instregnr = expected_instregnr - unique_instregnr_in_results
 
-    print("Retrying to process missing institutioner...")
-    for org in table_institution:
+    print(f"Retrying to process failed {organisation_name}...")
+    for org in table_organisation:
         if org.InstRegNr in missing_instregnr:
-            result_df = pd.concat([result_df, enter_organisation(browser, org, "Institutioner", base_dir, error_log, notification_mail)])
-
-    print("Retrying to process missing dagtilbud...")
-    for org in table_dagtilbud:
-        if org.InstRegNr in missing_instregnr:
-            result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
+            result_df = pd.concat([result_df, enter_organisation(browser, org, organisation_name, base_dir, error_log, notification_mail)])
 
 
-def run_overview_creation(base_dir, connection_string, notification_mail):
+def run_overview_creation(base_dir, connection_string, notification_mail, dagtilbud, institutioner):
     """Run the process of creating the overview of dataaftaler."""
-
     # Clear the base directory before processing
     clear_base_directory(base_dir)
 
@@ -398,20 +410,27 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
             EC.element_to_be_clickable((By.ID, "organisation-search"))
         )
 
-        table_dagtilbud, table_institution = fetch_aftaler(connection_string)
+        expected_instregnr = set()
 
-        print("Processing institutioner tab...")
-        for org in table_institution:
-            result_df = pd.concat([result_df, enter_organisation(browser, org, "Institutioner", base_dir, error_log, notification_mail)])
+        if institutioner == "True":
+            table_institution = fetch_aftaler(connection_string, "Institutioner")
+            expected_instregnr.update(org.InstRegNr for org in table_institution)
+            print("Processing institutioner tab...")
+            for org in table_institution:
+                result_df = pd.concat([result_df, enter_organisation(browser, org, "Institutioner", base_dir, error_log, notification_mail)])
 
-        print("Processing dagtilbud tab...")
-        for org in table_dagtilbud:
-            result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
+            if result_df is not None and not result_df.empty:
+                retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_institution, "Institutioner")
 
-        expected_instregnr = {org.InstRegNr for org in table_dagtilbud + table_institution}
+        if dagtilbud == "True":
+            table_dagtilbud = fetch_aftaler(connection_string, "Dagtilbud")
+            expected_instregnr.update(org.InstRegNr for org in table_dagtilbud)
+            print("Processing dagtilbud tab...")
+            for org in table_dagtilbud:
+                result_df = pd.concat([result_df, enter_organisation(browser, org, "Dagtilbud", base_dir, error_log, notification_mail)])
 
-        if result_df is not None and not result_df.empty:
-            retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_dagtilbud, table_institution)
+            if result_df is not None and not result_df.empty:
+                retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_dagtilbud, "Dagtilbud")
 
     except TimeoutException as e:
         error_message = f"Timeout error occurred: {str(e)}"
@@ -423,8 +442,6 @@ def run_overview_creation(base_dir, connection_string, notification_mail):
         error_log.append({'InstRegNr': 'N/A', 'Organisation': 'N/A', 'Error': error_message})
 
     finally:
-        # Verify if all expected InstRegNr have been processed
-        expected_instregnr = {org.InstRegNr for org in table_dagtilbud + table_institution}
 
         if result_df is not None and not result_df.empty:
             unique_instregnr_in_results = set(result_df['Instregnr'].unique())
