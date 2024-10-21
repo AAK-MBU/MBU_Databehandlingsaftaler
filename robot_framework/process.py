@@ -3,6 +3,7 @@ import os
 import json
 import pyodbc
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
+from OpenOrchestrator.database.queues import QueueStatus
 from robot_framework.subprocesses.overview_creation import run_overview_creation
 from robot_framework.subprocesses.queue_upload import retrieve_changes, upload_to_queue
 from robot_framework.subprocesses.queue_handling import process_queue_elements
@@ -21,8 +22,10 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         if process_arg == 'create_overview':
             base_dir = oc_args_json['base_dir']
             notification_mail = oc_args_json['notification_mail']
+            dagtilbud = oc_args_json['dagtilbud']
+            institutioner = oc_args_json['institutioner']
             orchestrator_connection.log_trace("Starting overview creation.")
-            run_overview_creation(base_dir, connection_string, notification_mail)
+            run_overview_creation(base_dir, connection_string, notification_mail, dagtilbud, institutioner)
             orchestrator_connection.log_trace("Overview creation completed.")
 
         elif process_arg == 'upload_and_handle_queue':
@@ -49,9 +52,12 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         elif process_arg == 'queue_upload':
             # Delete all elements in the queue before uploading new ones
             base_dir = oc_args_json['base_dir']
-            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
-            for element in queue_elements:
-                orchestrator_connection.delete_queue_element(element.id)
+            while True:
+                queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
+                if not queue_elements:
+                    break
+                for element in queue_elements:
+                    orchestrator_connection.delete_queue_element(element.id)
 
             orchestrator_connection.log_trace("Retrieving changes from overview.")
             approve_data, delete_data, wait_data = retrieve_changes(base_dir)
@@ -60,7 +66,7 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
             orchestrator_connection.log_trace("Queue upload completed.")
 
         elif process_arg == 'handle_queue':
-            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
+            queue_elements = orchestrator_connection.get_queue_elements(queue_name="Databehandlingsaftale_Status_Queue", status=QueueStatus.NEW, limit=1000)
             if queue_elements:
                 orchestrator_connection.log_trace(f"Handling {len(queue_elements)} queue elements.")
                 process_queue_elements(queue_elements, orchestrator_connection)
@@ -68,7 +74,9 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
 
         else:
             raise ValueError(f"Invalid process: {process_arg}")
-    except pyodbc.Error as e:
-        orchestrator_connection.log_trace(f"Database error: {str(e)}")
+
+    except pyodbc.Error as error:
+        orchestrator_connection.log_trace(f"Database error: {str(error)}")
+
     except ValueError as e:
         orchestrator_connection.log_trace(f"Value error: {str(e)}")

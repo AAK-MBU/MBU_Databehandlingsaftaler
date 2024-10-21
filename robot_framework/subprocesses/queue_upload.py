@@ -6,6 +6,11 @@ import hashlib
 import pandas as pd
 
 
+def clean_instregnr(instregnr):
+    """Removes any decimal point and digits after it from Instregnr."""
+    return str(instregnr).split('.', maxsplit=1)[0]
+
+
 def retrieve_changes(base_dir):
     """
     Retrieves and filters data from the Dataaftaler overview created with the create_overview process.
@@ -33,6 +38,9 @@ def retrieve_changes(base_dir):
     else:
         raise ValueError("There should be exactly one Oversigt file in the directory. Delete old files.")
 
+        # Apply cleaning to Instregnr column
+    df['Instregnr'] = df['Instregnr'].apply(clean_instregnr)
+
     filtered_approve_df = df[(df['statusændring'] == 'GODKEND') & (df['status'] != 'GODKENDT')]
     filtered_delete_df = df[(df['statusændring'] == 'SLET') & (df['status'] != 'SLETTET')]
     filtered_wait_df = df[(df['statusændring'] == 'VENT') & (df['status'] != 'VENTER')]
@@ -41,17 +49,8 @@ def retrieve_changes(base_dir):
     delete_data = filtered_delete_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
     wait_data = filtered_wait_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
 
-    # Print all data to be uploaded
-    print("DATA RETRIVED FROM EXCEL FILE")
-    print("Approve data:")
-    for data in approve_data:
-        print(data)
-    print("\nDelete data:")
-    for data in delete_data:
-        print(data)
-    print("\nWait data:")
-    for data in wait_data:
-        print(data)
+    total_changes = len(approve_data) + len(delete_data) + len(wait_data)
+    print(f"Total changes: {total_changes}")
 
     return approve_data, delete_data, wait_data
 
@@ -62,7 +61,6 @@ def generate_short_hash(data, length=8):
         data = json.dumps(data, sort_keys=True)
     hash_object = hashlib.md5(data.encode())
     short_hash = hash_object.hexdigest()[:length]
-    print(f"Generated hash: {short_hash} for data: {data}")
     return short_hash
 
 
@@ -76,9 +74,17 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     delete_references = [f"Slet_{generate_short_hash(data)}" for data in delete_data]
     wait_references = [f"Vent_{generate_short_hash(data)}" for data in wait_data]
 
-    print(f"Approve References: {approve_references}")
-    print(f"Delete References: {delete_references}")
-    print(f"Wait References: {wait_references}")
+    # Check for duplicated references and change them if necessary
+    all_references = approve_references + delete_references + wait_references
+
+    if len(all_references) != len(set(all_references)):
+        print("Duplicated references found. Changing them.")
+        for i, reference in enumerate(all_references):
+            if all_references.count(reference) > 1:
+                all_references[i] = f"{reference}_{i}"
+        approve_references = all_references[:len(approve_references)]
+        delete_references = all_references[len(approve_references):len(approve_references) + len(delete_references)]
+        wait_references = all_references[len(approve_references) + len(delete_references):]
 
     try:
         if approve_data:
