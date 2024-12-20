@@ -1,0 +1,6 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/" # Adjust if projects.toml is in a subdirectory
+    schedule:
+      interval: "daily"
