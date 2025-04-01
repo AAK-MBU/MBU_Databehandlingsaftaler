@@ -279,7 +279,7 @@ def change_status(browser, queue_element, row):
             EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'Er du sikker på, at adgangens status skal ændres til GODKENDT')]"))
         )
 
-    click_element_with_retries(browser, By.XPATH, '/html/body/div[4]/div/div/div/button[2]')
+    click_element_with_retries(browser, By.XPATH, '/html/body/div[4]/div/div/div/div/button[2]')
     time.sleep(2)
 
 
