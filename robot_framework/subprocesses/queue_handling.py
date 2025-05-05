@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
 from OpenOrchestrator.database.queues import QueueStatus
 from .overview_creation import open_stil_connection
+from robot_framework.exceptions import handle_error
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -146,7 +147,13 @@ def process_element(browser, queue_element, orchestrator_connection):
             time.sleep(RETRY_DELAY)
     else:
         orchestrator_connection.log_error(f"Maximum retries reached for element {queue_element.id} - Failed to process element")
-        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, "Maximum retries reached - Failed to process element")
+        # orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, "Maximum retries reached - Failed to process element")
+        handle_error(
+            message=f"Maximum retries reached for element {queue_element.id} - Failed to process element",
+            error=TimeoutError(),
+            queue_element=queue_element,
+            orchestrator_connection=orchestrator_connection
+        )
 
 
 def click_checkbox_if_not_checked(browser, checkbox_id):
