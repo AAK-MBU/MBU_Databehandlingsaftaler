@@ -34,6 +34,7 @@ def initialize_browser(base_dir):
     chrome_options.add_argument("--disable-web-security")
     chrome_options.add_argument("--allow-running-insecure-content")
     chrome_options.add_argument("--disable-search-engine-choice-screen")
+    # chrome_options.add_argument("--incognito")
 
     return webdriver.Chrome(options=chrome_options)
 
@@ -138,19 +139,53 @@ def add_columns_to_dataframe(file_path, instregnr, organisation):
         return None
 
 
-def click_element_with_retries(browser, by, value, retries=4):
-    """Click an element with retries and handle common exceptions."""
+def wait_for_react_app(browser, timeout=10):
+    try:
+        # Vent på at React-appen er fuldt indlæst
+        WebDriverWait(browser, timeout).until(
+            lambda driver: driver.execute_script(
+                "return window.React && document.getElementById('react').children.length > 0"
+            )
+        )
+        return True
+    except Exception as e:
+        print(f"React app load error: {e}")
+        return False
+
+
+def click_element_with_retries(
+    browser,
+    by,
+    value,
+    retries=4,
+    react_wait=True
+):
     for attempt in range(retries):
         try:
-            element = WebDriverWait(browser, 2).until(
-                EC.visibility_of_element_located((by, value))
+            # Ekstra React-ventetid hvis aktiveret
+            if react_wait:
+                wait_for_react_app(browser, timeout=2)
+
+            element = WebDriverWait(browser, 5).until(
+                EC.element_to_be_clickable((by, value))
             )
-            element.click()
+
+            browser.execute_script("arguments[0].scrollIntoView(true);", element)
+
+            try:
+                element.click()
+            except Exception:
+                # Fallback til JavaScript click
+                browser.execute_script("arguments[0].click();", element)
+
             print(f"Successfully clicked element '{value}' on attempt {attempt + 1}")
             return True
-        except (TimeoutException, ElementClickInterceptedException, StaleElementReferenceException) as e:
+
+        except Exception as e:
             print(f"Attempt {attempt + 1} failed: {e}")
+            browser.refresh()
             time.sleep(2)
+
     print(f"Failed to click element '{value}' after {retries} attempts")
     return False
 
@@ -244,7 +279,7 @@ def process_organisation(browser, org, organisation_name, base_dir, error_log, n
 
         except TimeoutException:
             pass
-        return click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a")
+        return click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a", react_wait=False)
 
     def check_data_requests(browser):
         """Check if there are any data requests for the organisation."""
@@ -418,6 +453,8 @@ def run_overview_creation(base_dir, connection_string, notification_mail, dagtil
             print("Processing institutioner tab...")
             for org in table_institution:
                 result_df = pd.concat([result_df, enter_organisation(browser, org, "Institutioner", base_dir, error_log, notification_mail)])
+                print(result_df)
+                print("break")
 
             if result_df is not None and not result_df.empty:
                 retry_missing_organisations(expected_instregnr, result_df, browser, base_dir, error_log, notification_mail, table_institution, "Institutioner")
