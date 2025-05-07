@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
 from OpenOrchestrator.database.queues import QueueStatus
 from .overview_creation import open_stil_connection
+from robot_framework.exceptions import handle_error
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -29,20 +30,54 @@ def process_queue_elements(queue_elements, orchestrator_connection):
         browser.quit()
 
 
-def click_element_with_retries(browser, by, value, max_retries=MAX_RETRIES):
-    """Attempt to click an element multiple times, handling common click-related exceptions."""
-    for attempt in range(max_retries):
-        try:
-            element = WebDriverWait(browser, 5).until(
-                EC.visibility_of_element_located((by, value))
+def wait_for_react_app(browser, timeout=10):
+    try:
+        # Vent på at React-appen er fuldt indlæst
+        WebDriverWait(browser, timeout).until(
+            lambda driver: driver.execute_script(
+                "return window.React && document.getElementById('react').children.length > 0"
             )
-            element.click()
-            print(f"Clicked element '{value}' successfully on attempt {attempt + 1}")
+        )
+        return True
+    except Exception as e:
+        print(f"React app load error: {e}")
+        return False
+
+
+def click_element_with_retries(
+    browser,
+    by,
+    value,
+    retries=4,
+    react_wait=True
+):
+    for attempt in range(retries):
+        try:
+            # Ekstra React-ventetid hvis aktiveret
+            if react_wait:
+                wait_for_react_app(browser, timeout=2)
+
+            element = WebDriverWait(browser, 5).until(
+                EC.element_to_be_clickable((by, value))
+            )
+
+            browser.execute_script("arguments[0].scrollIntoView(true);", element)
+
+            try:
+                element.click()
+            except Exception:
+                # Fallback til JavaScript click
+                browser.execute_script("arguments[0].click();", element)
+
+            print(f"Successfully clicked element '{value}' on attempt {attempt + 1}")
             return True
-        except (TimeoutException, ElementClickInterceptedException, StaleElementReferenceException) as e:
+
+        except Exception as e:
             print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(1)
-    print(f"Failed to click element '{value}' after {max_retries} attempts")
+            browser.refresh()
+            time.sleep(2)
+
+    print(f"Failed to click element '{value}' after {retries} attempts")
     return False
 
 
@@ -112,7 +147,13 @@ def process_element(browser, queue_element, orchestrator_connection):
             time.sleep(RETRY_DELAY)
     else:
         orchestrator_connection.log_error(f"Maximum retries reached for element {queue_element.id} - Failed to process element")
-        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, "Maximum retries reached - Failed to process element")
+        # orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, "Maximum retries reached - Failed to process element")
+        handle_error(
+            message=f"Maximum retries reached for element {queue_element.id} - Failed to process element",
+            error=TimeoutError(),
+            queue_element=queue_element,
+            orchestrator_connection=orchestrator_connection
+        )
 
 
 def click_checkbox_if_not_checked(browser, checkbox_id):
