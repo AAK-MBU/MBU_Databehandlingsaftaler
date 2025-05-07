@@ -36,7 +36,7 @@ def retrieve_changes(base_dir):
     if len(excel_files) == 1:
         df = pd.read_excel(excel_files[0])
     else:
-        raise ValueError("There should be exactly one Oversigt file in the directory. Delete old files.")
+        raise ValueError(f"There should be exactly one Oversigt file in the directory. Delete old files. Files in directory: {', '.join([file.split('/')[-1] for file in excel_files])}")
 
         # Apply cleaning to Instregnr column
     df['Instregnr'] = df['Instregnr'].apply(clean_instregnr)
