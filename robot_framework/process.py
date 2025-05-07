@@ -61,7 +61,7 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
 
             orchestrator_connection.log_trace("Retrieving changes from overview.")
             approve_data, delete_data, wait_data = retrieve_changes(base_dir)
-            orchestrator_connection.log_trace("Changes retrieved. Uploading to queue.")
+            orchestrator_connection.log_trace(f"{len(approve_data)+len(delete_data)+len(wait_data)} changes retrieved. Uploading to queue.")
             upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection)
             orchestrator_connection.log_trace("Queue upload completed.")
 
@@ -80,3 +80,14 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
 
     except ValueError as e:
         orchestrator_connection.log_trace(f"Value error: {str(e)}")
+
+
+if __name__ == '__main__':
+    import os
+    orchestrator_connection = OrchestratorConnection(
+        process_name="test.databehandling",
+        connection_string=os.getenv("OpenOrchestratorConnString"),
+        crypto_key=os.getenv("OpenOrchestratorKey"),
+        process_arguments='{"process":"handle_queue"}'
+    )
+    process(orchestrator_connection)
