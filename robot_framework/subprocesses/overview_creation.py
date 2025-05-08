@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from openpyxl.worksheet.datavalidation import DataValidation
 
 
@@ -140,6 +140,7 @@ def add_columns_to_dataframe(file_path, instregnr, organisation):
 
 
 def wait_for_react_app(browser, timeout=10):
+    """Wait for react"""
     try:
         # Vent på at React-appen er fuldt indlæst
         WebDriverWait(browser, timeout).until(
@@ -160,6 +161,7 @@ def click_element_with_retries(
     retries=4,
     react_wait=True
 ):
+    """Click element with retries and wait for react"""
     for attempt in range(retries):
         try:
             # Ekstra React-ventetid hvis aktiveret

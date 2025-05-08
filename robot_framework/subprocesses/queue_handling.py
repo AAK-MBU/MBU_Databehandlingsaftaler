@@ -5,10 +5,10 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from OpenOrchestrator.database.queues import QueueStatus
-from .overview_creation import open_stil_connection
 from robot_framework.exceptions import handle_error
+from robot_framework.subprocesses.overview_creation import open_stil_connection
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -18,6 +18,7 @@ DEFAULT_WAIT_TIME = 30
 def process_queue_elements(queue_elements, orchestrator_connection):
     """Process each queue element by grouping and handling them based on their reference type."""
     browser = webdriver.Chrome()
+    browser.maximize_window()
     try:
         open_stil_connection(browser)
         grouped_elements = group_elements_by_instregnr(queue_elements)
@@ -31,6 +32,7 @@ def process_queue_elements(queue_elements, orchestrator_connection):
 
 
 def wait_for_react_app(browser, timeout=10):
+    """ Wait for react """
     try:
         # Vent på at React-appen er fuldt indlæst
         WebDriverWait(browser, timeout).until(
@@ -51,6 +53,7 @@ def click_element_with_retries(
     retries=4,
     react_wait=True
 ):
+    """Attempt to click element with retries and react wait"""
     for attempt in range(retries):
         try:
             # Ekstra React-ventetid hvis aktiveret
@@ -361,7 +364,7 @@ def enter_dataadministration(browser):
         )
         if notifications_close_button:
             close_notifications_popup(browser)
-            return True
+            print("Should have closed notification popup")
 
         if not browser.execute_script("return document.readyState") == "complete":
             browser.refresh()
@@ -369,6 +372,7 @@ def enter_dataadministration(browser):
 
     except TimeoutException:
         pass
+    print("Now trying to click 'Dataadministration' button")
     return click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a")
 
 
@@ -406,8 +410,8 @@ def enter_organisation(browser, org, instregnr):
 def close_notifications_popup(browser):
     """Close any notification popups that may obstruct the automation process."""
     try:
-        WebDriverWait(browser, 5).until(
-            EC.element_to_be_clickable((By.ID, "udbyder-close-button"))
-        ).click()
+        print("Trying to close notification popup")
+        click_element_with_retries(browser, By.ID, "udbyder-close-button")
+
     except TimeoutException:
         print("No notification popup found or close button not clickable.")
