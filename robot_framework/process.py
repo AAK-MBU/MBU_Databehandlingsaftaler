@@ -31,9 +31,6 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         elif process_arg == 'upload_and_handle_queue':
             # Delete all elements in the queue before uploading new ones
             base_dir = oc_args_json['base_dir']
-            queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
-            for element in queue_elements:
-                orchestrator_connection.delete_queue_element(element.id)
 
             # Retrieve changes and upload
             orchestrator_connection.log_trace("Retrieving changes from overview.")
@@ -52,12 +49,6 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
         elif process_arg == 'queue_upload':
             # Delete all elements in the queue before uploading new ones
             base_dir = oc_args_json['base_dir']
-            while True:
-                queue_elements = orchestrator_connection.get_queue_elements("Databehandlingsaftale_Status_Queue")
-                if not queue_elements:
-                    break
-                for element in queue_elements:
-                    orchestrator_connection.delete_queue_element(element.id)
 
             orchestrator_connection.log_trace("Retrieving changes from overview.")
             approve_data, delete_data, wait_data = retrieve_changes(base_dir)
@@ -80,14 +71,3 @@ def process(orchestrator_connection: OrchestratorConnection) -> None:
 
     except ValueError as e:
         orchestrator_connection.log_trace(f"Value error: {str(e)}")
-
-
-if __name__ == '__main__':
-    import os
-    orchestrator_connection = OrchestratorConnection(
-        process_name="test.databehandling",
-        connection_string=os.getenv("OpenOrchestratorConnString"),
-        crypto_key=os.getenv("OpenOrchestratorKey"),
-        process_arguments='{"process":"handle_queue"}'
-    )
-    process(orchestrator_connection)

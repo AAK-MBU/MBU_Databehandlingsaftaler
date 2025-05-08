@@ -373,6 +373,7 @@ def enter_dataadministration(browser):
     print("Now trying to click 'Dataadministration' button")
     return click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a")
 
+
 def enter_organisation(browser, org, instregnr):
     """Navigate to the organization and click the necessary elements."""
     for attempt in range(MAX_RETRIES):
