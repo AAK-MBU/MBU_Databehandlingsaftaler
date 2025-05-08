@@ -5,10 +5,10 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from OpenOrchestrator.database.queues import QueueStatus
-from .overview_creation import open_stil_connection
 from robot_framework.exceptions import handle_error
+from robot_framework.subprocesses.overview_creation import open_stil_connection
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5
@@ -32,6 +32,7 @@ def process_queue_elements(queue_elements, orchestrator_connection):
 
 
 def wait_for_react_app(browser, timeout=10):
+    """ Wait for react """
     try:
         # Vent på at React-appen er fuldt indlæst
         WebDriverWait(browser, timeout).until(
@@ -52,6 +53,7 @@ def click_element_with_retries(
     retries=4,
     react_wait=True
 ):
+    """Attempt to click element with retries and react wait"""
     for attempt in range(retries):
         try:
             # Ekstra React-ventetid hvis aktiveret
