@@ -22,6 +22,8 @@ ERROR_EMAIL = "Error Email"
 QUEUE_NAME = "Databehandlingsaftale_Status_Queue"
 
 # The limit on how many queue elements to process
-MAX_TASK_COUNT = 10000
+MAX_TASK_COUNT = 30
 
 # ----------------------
+# Other configs
+REQUEST_TIMEOUT = 10

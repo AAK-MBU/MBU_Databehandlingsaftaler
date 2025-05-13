@@ -1,417 +1,232 @@
 """This module contains the queue handling process of the robot."""
 import json
-import time
+import requests
 from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-from OpenOrchestrator.database.queues import QueueStatus
-from robot_framework.exceptions import handle_error
-from robot_framework.subprocesses.overview_creation import open_stil_connection
-
-MAX_RETRIES = 3
-RETRY_DELAY = 5
-DEFAULT_WAIT_TIME = 30
+from OpenOrchestrator.database.queues import QueueElement
+from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
+from robot_framework.exceptions import ResponseError, BusinessError
+from robot_framework.config import REQUEST_TIMEOUT
 
 
-def process_queue_elements(queue_elements, orchestrator_connection):
-    """Process each queue element by grouping and handling them based on their reference type."""
-    browser = webdriver.Chrome()
-    browser.maximize_window()
-    try:
-        open_stil_connection(browser)
-        grouped_elements = group_elements_by_instregnr(queue_elements)
-
-        for instregnr, elements in grouped_elements.items():
-            handle_elements_for_instregnr(browser, instregnr, elements, orchestrator_connection)
-    except (Exception) as e:
-        print(f"Encountered an error: {e}")
-    finally:
-        browser.quit()
+class ReactAppLoadError(Exception):
+    """Custom exception for react load errors"""
 
 
-def wait_for_react_app(browser, timeout=10):
-    """ Wait for react """
-    try:
-        # Vent på at React-appen er fuldt indlæst
-        WebDriverWait(browser, timeout).until(
-            lambda driver: driver.execute_script(
-                "return window.React && document.getElementById('react').children.length > 0"
-            )
-        )
-        return True
-    except Exception as e:
-        print(f"React app load error: {e}")
-        return False
+def get_browser_cookie(cookie_name, browser: webdriver.Chrome):
+    """Retrieves base cookie from webdriver.Chrome instance"""
+    cookie = None
+    for c in browser.get_cookies():
+        if c['name'] == cookie_name:
+            cookie = f"{c['name']}={c['value']}"
+    return cookie
 
 
-def click_element_with_retries(
-    browser,
-    by,
-    value,
-    retries=4,
-    react_wait=True
-):
-    """Attempt to click element with retries and react wait"""
-    for attempt in range(retries):
-        try:
-            # Ekstra React-ventetid hvis aktiveret
-            if react_wait:
-                wait_for_react_app(browser, timeout=2)
-
-            element = WebDriverWait(browser, 5).until(
-                EC.element_to_be_clickable((by, value))
-            )
-
-            browser.execute_script("arguments[0].scrollIntoView(true);", element)
-
-            try:
-                element.click()
-            except Exception:
-                # Fallback til JavaScript click
-                browser.execute_script("arguments[0].click();", element)
-
-            print(f"Successfully clicked element '{value}' on attempt {attempt + 1}")
-            return True
-
-        except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
-            browser.refresh()
-            time.sleep(2)
-
-    print(f"Failed to click element '{value}' after {retries} attempts")
-    return False
+def get_base_cookies(browser):
+    """Retrieves base cookies for use in all calls"""
+    base_cookie = ''
+    for cookie_name in ["persistence-cookie", "SESSION", "XSRF-TOKEN"]:
+        base_cookie += (get_browser_cookie(cookie_name, browser)+";")
+    x_xsrf_token = get_browser_cookie("XSRF-TOKEN", browser).split("=")[-1]
+    return base_cookie, x_xsrf_token
 
 
-def group_elements_by_instregnr(queue_elements):
-    """Organize queue elements into groups based on their institution registration number ('instregnr')."""
-    grouped_elements = {}
-    for element in queue_elements:
-        element_data = json.loads(element.data)
-        instregnr = element_data['Instregnr']
-        grouped_elements.setdefault(instregnr, []).append(element)
-
-    # Print the total amount of element
-    print(f"Total amount of elements: {len(queue_elements)}")
-    return grouped_elements
+def get_request_cookie(cookie_name, response):
+    """Get cookie from request.response instance"""
+    cookie = None
+    for c in response.cookies:
+        if c.name == cookie_name:
+            cookie = f"{c.name}={c.value};"
+    return cookie
 
 
-def handle_elements_for_instregnr(browser, instregnr, elements, orchestrator_connection):
-    """Process all queue elements for a specific institution registration number."""
-    element_data = json.loads(elements[0].data)  # Assume all elements have the same organization
-    org = element_data['Organisation']
-
-    orchestrator_connection.log_trace(f"Processing {len(elements)} queue elements for {instregnr} ({org})")
-
-    for _ in range(MAX_RETRIES):
-        try:
-            enter_organisation(browser, org, instregnr)
-            break
-        except (TimeoutException, NoSuchElementException) as e:
-            print(f"Error navigating to data access administration for {instregnr}: {e}. Retrying...")
-            orchestrator_connection.log_error(f"Error navigating to data access administration for {instregnr}: {e}. Retrying...")
-            time.sleep(RETRY_DELAY)
+def get_payload(org_type: str, org_num: str, runtime_args: dict):
+    """Retrieves needed payload from runtime args based on organisation type and number"""
+    payload = None
+    if org_type == "Institutioner":
+        payload = runtime_args["inst_payload_dict"][org_num]
+    elif org_type == "Dagtilbud":
+        payload = runtime_args["dag_payload_dict"][org_num]
     else:
-        # Mark elements as failed after max retries
-        for element in elements:
-            orchestrator_connection.set_queue_element_status(element.id, QueueStatus.FAILED, "Failed entering Data Access Administration")
-        orchestrator_connection.log_error(f"Failed after {MAX_RETRIES} retries: Error navigating to data access administration. All elements with Instregnr: {instregnr} set to failed.")
-        return
-
-    # Process each individual element for the institution
-    for element in elements:
-        process_element(browser, element, orchestrator_connection)
+        raise ValueError(f"org_type should be 'Institutioner' or 'Dagtilbud' but is {org_type}")
+    return payload
 
 
-def process_element(browser, queue_element, orchestrator_connection):
-    """Handle an individual queue element with retry logic."""
-    element_data = json.loads(queue_element.data)
-    ref = queue_element.reference
+def get_org(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement, runtime_args: dict):
+    """Accesses organisation related to queue element"""
+    queue_data = json.loads(queue_element.data)
+    org_type = queue_data["Organisation"]
+    org_num = queue_data["Instregnr"]
 
-    orchestrator_connection.log_trace(f"Processing element {queue_element.id} with reference '{ref}'")
+    payload = get_payload(org_type, org_num, runtime_args)
 
-    for _ in range(MAX_RETRIES):
-        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.IN_PROGRESS)
-        try:
-            success, message = perform_data_access(browser, element_data, ref, queue_element)
+    resp_get_org = requests.post(
+        "https://tilslutning.stil.dk/tilslutningBE/active-organisation",
+        headers={
+            "Cookie": f"{runtime_args['base_cookie']};{runtime_args['cookie_inst_list']}",
+            "x-xsrf-token": runtime_args['x-xsrf-token'],
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Accept": "*/*"
+        },
+        data=json.dumps(payload),
+        timeout=REQUEST_TIMEOUT
+    )
+    if not resp_get_org.status_code == 200:
+        orchestrator_connection.log_error(f"Error fetching organisation: {org_type = }, {org_num = }")
+        raise ResponseError(resp_get_org)
 
-            if success:
-                orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE, message)
-                orchestrator_connection.log_trace(f"Element {queue_element.id} processed successfully: {message}")
-                break
+    return resp_get_org
 
-            orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, message)
-            orchestrator_connection.log_error(f"Failed to process element {queue_element.id}: {message}. Retrying...")
 
-        except (TimeoutException, NoSuchElementException) as e:
-            orchestrator_connection.log_error(f"Error processing element {queue_element.id}: {e}. Retrying...")
-            print(f"Error processing element {queue_element.id}: {e}. Retrying...")
-            time.sleep(RETRY_DELAY)
-    else:
-        orchestrator_connection.log_error(f"Maximum retries reached for element {queue_element.id} - Failed to process element")
-        # orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, "Maximum retries reached - Failed to process element")
-        handle_error(
-            message=f"Maximum retries reached for element {queue_element.id} - Failed to process element",
-            error=TimeoutError(),
-            queue_element=queue_element,
-            orchestrator_connection=orchestrator_connection
+def get_data(orchestrator_connection, queue_element, runtime_args, org_cookie):
+    """Retrieves data for organization"""
+    queue_data = json.loads(queue_element.data)
+    org_type = queue_data["Organisation"]
+    org_num = queue_data["Instregnr"]
+
+    resp_get_data = requests.get(
+            "https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/hent",
+            headers={"Cookie": f"{runtime_args['base_cookie']};{org_cookie}"},
+            timeout=REQUEST_TIMEOUT
         )
+    if not resp_get_data.status_code == 200:
+        orchestrator_connection.log_error(f"Error while accessing data for organization: {org_type = }, {org_num = }")
+        raise ResponseError(resp_get_data)
+
+    data_access_json = json.loads(resp_get_data.text)
+    agreements_dict = {f"{agr['udbyderSystemOgUdbyder']['navn']}_{agr['stilService']['servicenavn']}_{agr['aktuelStatus']}": agr for agr in data_access_json if agr['stilService'] is not None}
+    return agreements_dict
 
 
-def click_checkbox_if_not_checked(browser, checkbox_id):
-    """Click a checkbox if it is not already checked."""
-    # Wait until the checkbox is present in the DOM
-    checkbox = WebDriverWait(browser, 10).until(
-        EC.presence_of_element_located((By.ID, checkbox_id))
+def delete_agreement(orchestrator_connection: OrchestratorConnection, agreement: dict, runtime_args: dict, org_cookie: str):
+    """Deletes inputted agreement"""
+    agreement_id = agreement["id"]
+    delete_resp = requests.delete(
+        f"https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/slet/{agreement_id}",
+        headers={
+            "Cookie": f"{runtime_args['base_cookie']};{org_cookie}",
+            "x-xsrf-token": runtime_args['x-xsrf-token'],
+        },
+        timeout=REQUEST_TIMEOUT
+    )
+    if not delete_resp.status_code == 200:
+        orchestrator_connection.log_error(f"Error when deleting agreement: {delete_resp}")
+        raise ResponseError(delete_resp)
+    return delete_resp
+
+
+def change_status(orchestrator_connection: OrchestratorConnection, reference: str, agreement: dict, runtime_args: dict, org_cookie: str):
+    """Changes status for inputted agreement based on reference"""
+
+    set_status = get_status(reference)
+
+    if set_status is None:
+        raise ValueError(f"reference status: {reference.split("_")[0]} does not match any of 'Godkend', 'Vent', or 'Slet'")
+
+    orchestrator_connection.log_trace(f"Setting status from {agreement["aktuelStatus"]} to {set_status}")
+
+    payload = {"aftaleid": agreement['id'], "status": set_status, "kommentar": None}
+    payload = json.dumps(payload)
+
+    status_resp = requests.post(
+        "https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/setStatus",
+        headers={
+            "Cookie": f"{runtime_args['base_cookie']};{org_cookie}",
+            "x-xsrf-token": runtime_args['x-xsrf-token'],
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Accept": "*/*"
+        },
+        data=payload,
+        timeout=REQUEST_TIMEOUT
     )
 
-    # Check if the checkbox is already checked
-    if not checkbox.is_selected():
-        checkbox.click()  # Click the checkbox to check it
+    if not status_resp.status_code == 200:
+        orchestrator_connection.log_error("Error while changing status")
+        raise ResponseError(status_resp)
+
+    return status_resp
 
 
-def perform_data_access(browser, element_data, ref, queue_element):  # pylint: disable=too-many-return-statements
-    """Perform data access operations like approving, awaiting, or deleting an agreement."""
-    system_name = element_data['systemNavn']
-    service_name = element_data['serviceNavn']
-    status = element_data['status']
-    time.sleep(2)  # Add sleep to account for possible delays
+def get_status(reference):
+    """Converts reference to status used in API calls"""
+    set_status_dict = {
+        'Godkend': 'GODKENDT',
+        'Vent': 'VENTER',
+        'Slet': 'SLETTET',
+    }
 
-    click_checkbox_if_not_checked(browser, 'visSlettede')
-    click_checkbox_if_not_checked(browser, 'visPassive')
+    set_status = set_status_dict.get(reference.split('_')[0], None)
 
-    # Wait until the table container is fully loaded
-    table = WebDriverWait(browser, DEFAULT_WAIT_TIME).until(
-        EC.presence_of_element_located((By.XPATH, "//table[@class='stil-tabel']"))
-    )
-
-    # Find all rows across the entire container
-    all_rows = table.find_elements(By.XPATH, ".//tbody/tr")  # Relative path to the tbody
-
-    # To track if agreement is found
-    agreement_found = False
-
-    for row in all_rows:
-        click_checkbox_if_not_checked(browser, 'visSlettede')
-        click_checkbox_if_not_checked(browser, 'visPassive')
-
-        data_cells = row.find_elements(By.TAG_NAME, "td")
-        if not data_cells:
-            continue  # Skip to the next row if no <td> is found
-
-        row_texts = []
-        for cell in data_cells:
-            span_elements = cell.find_elements(By.TAG_NAME, "span")  # Find <span> in each <td>
-            for span in span_elements:
-                row_texts.append(span.text.strip())  # Append the text from the <span>
-
-        print(f"Checking row: {row_texts}")
-
-        # Check if both system_name and service_name are present in row_texts
-        if (system_name.strip() in [text.strip() for text in row_texts] and service_name.strip() in [text.strip() for text in row_texts]):
-
-            browser.execute_script("arguments[0].scrollIntoView(true);", row)
-            print(f"Found agreement for {system_name} - {service_name}")
-            browser.execute_script("arguments[0].style.backgroundColor = 'yellow'", row)  # Highlight the row for visibility
-
-            # Additional status checks and actions
-            if ref.startswith('Godkend') and status == 'VENTER':
-                print(f"Element expected pre-status: {status}. Getting ready to change status to 'GODKENDT'...")
-                pre_status = check_status_change(system_name, service_name, 'GODKENDT', browser, row_texts)
-                if pre_status:
-                    print("Agreement already approved")
-                    return True, "Agreement already approved"
-                print("Proceeding to change agreement status to 'GODKENDT'...")
-                change_status(browser, queue_element, row)
-                time.sleep(2)  # Add sleep to account for possible delays
-                browser.switch_to.default_content()
-                browser.execute_script("window.scrollTo(0, 0)")
-                browser.switch_to.default_content()
-                confirmation = WebDriverWait(browser, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Status for dataadgang er opdateret.')]"))
-                )
-                if confirmation:
-                    print("Agreement succesfully changed to 'GODKENDT'")
-                    return True, "Agreement status changed to 'GODKENDT'"
-
-            if ref.startswith('Vent') and status == 'GODKENDT':
-                print(f"Element expected pre-status: {status}. Getting ready to change status to 'VENTER'...")
-                pre_status = check_status_change(system_name, service_name, 'VENTER', browser, row_texts)
-                if pre_status:
-                    print("Agreement already awaiting")
-                    return True, "Agreement already awaiting"
-                print("Proceeding to change agreement status to 'VENTER'...")
-                change_status(browser, queue_element, row)
-                time.sleep(2)  # Add sleep to account for possible delays
-                browser.switch_to.default_content()
-                browser.execute_script("window.scrollTo(0, 0)")
-                browser.switch_to.default_content()
-                confirmation = WebDriverWait(browser, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Status for dataadgang er opdateret.')]"))
-                )
-                if confirmation:
-                    print("Agreement succesfully changed to 'VENTER'")
-                    return True, "Agreement status changed to 'VENTER'"
-
-            if ref.startswith('Slet') and status != 'SLETTET':
-                print(f"Element expected pre-status: {status}. Getting ready to delete agreement...")
-                pre_status = check_status_change(system_name, service_name, 'SLETTET', browser, row_texts)
-                if pre_status:
-                    print("Agreement already deleted")
-                    return True, "Agreement already deleted"
-                print("Proceeding to delete agreement...")
-                return delete_agreement(browser, queue_element, row)
-
-            # Mark agreement found
-            agreement_found = True
-
-    if not agreement_found:
-        print(f"Agreement not found for {system_name} - {service_name}")
-        return False, "Agreement not found"
-
-    return False, "Agreement not found or failed to update status"
+    return set_status
 
 
-def check_status_change(system_name, service_name, expected_status, browser, column_texts):
-    """Helper to check if the status change was successful."""
-    print("Checking agreement status...")
-    retry_count = 0
-    max_retries = MAX_RETRIES
+def process_queue_element(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement):
+    """Handles the queue element processing. Changes status, deletes agreement or confirms that status is ok."""
+    # State at this point. Manual login done. Lists of organizations retrieved
+    # Unpack arguments
+    oc_args = json.loads(orchestrator_connection.process_arguments)
+    runtime_args = oc_args["runtime_args"]
 
-    while retry_count < max_retries:
-        try:
-            WebDriverWait(browser, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'table.stil-tabel'))
-            )
-            if (system_name.strip() in [text.strip() for text in column_texts] and service_name.strip() in [text.strip() for text in column_texts] and expected_status in [text.strip() for text in column_texts]):
-                return True
-            return False
-        except StaleElementReferenceException as e:
-            print(f"Encountered a stale element exception: {e}. Retrying...")
-            retry_count += 1
-            time.sleep(RETRY_DELAY)  # Short delay before retrying
-        except TimeoutException as e:
-            print(f"Timeout while checking status change: {e}.")
-            break
-    return False
+    # Unpack queue element
+    queue_data = json.loads(queue_element.data)
+    system_name = queue_data["systemNavn"]
+    service_name = queue_data["serviceNavn"]
+    current_status = queue_data["status"]
+    reference = queue_element.reference
+    wanted_status = get_status(reference)
 
+    # Build info dict
+    info_dict = {
+        "organisation": queue_data["Organisation"],
+        "institutionsnr": queue_data["Instregnr"],
+        "system navn": system_name,
+        "status før (fra kø element)": current_status,
+        "ønsket status": wanted_status,
+        "reference": queue_element.reference
+    }
 
-def change_status(browser, queue_element, row):
-    """Click the status change button and change status based on the queue element's reference."""
-    status_button = WebDriverWait(row, 10).until(
-            EC.presence_of_element_located((By.XPATH, ".//img[@class='hand dataadgang-status-knap' and @title='Skift status']"))
-        )
-    print("Clicking status button...")
-    browser.execute_script("arguments[0].style.backgroundColor = 'red'", status_button)  # Highlight the button for visibility
+    # Retrieve organisation
+    org_response = get_org(orchestrator_connection, queue_element, runtime_args)
+    org_cookie = get_request_cookie("AuthTokenTilslutning", org_response)
 
-    status_button.click()
+    # Retrieve data for organization agreements
+    agreements_dict = get_data(orchestrator_connection, queue_element, runtime_args, org_cookie)
+    dict_lookup = f"{system_name}_{service_name}_{current_status}"
+    agreement = agreements_dict.get(dict_lookup, None)
 
-    if queue_element.reference.startswith('Vent'):
-        print("Clicking Venter button")
-        time.sleep(1)  # Add sleep to account for possible delays
-        click_element_with_retries(browser, By.XPATH, '//button[text()="Til Venter"]')
-        WebDriverWait(browser, 20).until(
-            EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'Er du sikker på, at adgangens status skal ændres til VENTER')]"))
+    # Add info to infodict
+    info_dict["aftaleid"] = agreement.get("id", "Id not found")
+
+    if agreement is None:
+        dict_lookup_ok = f"{system_name}_{service_name}_{wanted_status}"
+        agreement_ok = agreements_dict.get(dict_lookup_ok, None)
+        if agreement_ok is not None:
+            info_dict["status før (fra fundet aftale)"] = agreement_ok["aktuelStatus"]
+            orchestrator_connection.log_trace(f"Status already ok. Info: {info_dict}")
+            return
+        orchestrator_connection.log_error(f"{system_name = } with {service_name = } and {current_status = } not found in agreements for {info_dict['organisation']} {info_dict['institutionsnr']}")
+        raise BusinessError()
+
+    if not agreement['aktuelStatus'] == current_status:
+        raise ValueError(
+            f"Agreement current status from response: {agreement['aktuelStatus']} " +
+            f"does not match current status from queue element: {current_status}"
         )
 
-    elif queue_element.reference.startswith('Godkend'):
-        print("Clicking Godkendt button")
-        time.sleep(1)
-        click_element_with_retries(browser, By.XPATH, '//button[text()="Godkend"]')
-        WebDriverWait(browser, 20).until(
-            EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'Er du sikker på, at adgangens status skal ændres til GODKENDT')]"))
-        )
+    orchestrator_connection.log_trace(f"Handling agreement: {system_name = } with {service_name = } and {current_status = } for {info_dict['organisation']} {info_dict['institutionsnr']}")
 
-    click_element_with_retries(browser, By.XPATH, '/html/body/div[4]/div/div/div/div/button[2]')
-    time.sleep(2)
+    if wanted_status in ["GODKENDT", "VENTER"]:
+        status_resp = change_status(orchestrator_connection, reference, agreement, runtime_args, org_cookie)
 
+        info_dict["status respons"] = status_resp.text
 
-def delete_agreement(browser, queue_element, row):
-    """Delete an agreement if it meets the criteria."""
-    try:
-        delete_button = row.find_element(By.XPATH, './/img[@src="img/ic_delete_24px.svg" and @title="Slet dataadgang"]')
-        browser.execute_script("arguments[0].style.backgroundColor = 'red'", delete_button)  # Highlight the button for visibility
+        orchestrator_connection.log_trace(f"Status successfully changed. Info: {info_dict}")
+    elif wanted_status == "SLETTET":
+        delete_resp = delete_agreement(orchestrator_connection, agreement, runtime_args, org_cookie)
 
-        delete_button.click()
-        time.sleep(2)  # Add sleep to account for possible delays
-        print("Clicking Slet button")
-        click_element_with_retries(browser, By.XPATH, '//button[text()="Slet"]')
-        time.sleep(2)
-        browser.switch_to.default_content()
-        browser.execute_script("window.scrollTo(0, 0)")
-        browser.switch_to.default_content()
+        info_dict["slet respons"] = delete_resp.text
 
-        print("Checking status change after deletion...")
-        confirmation = WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'er slettet')]"))
-        )
+        orchestrator_connection.log_trace(f"Agreement successfully deleted. Info: {info_dict}")
 
-        if confirmation:
-            print("Agreement successfully deleted")
-            return True, "Agreement deleted successfully"
-
-    except TimeoutException:
-        print(f"Failed to delete agreement for queue element {queue_element.id}")
-    return False, "Failed to delete agreement"
-
-
-def enter_dataadministration(browser):
-    """Handles the notification popup and clicks the necessary elements."""
-    try:
-        notifications_close_button = WebDriverWait(browser, 2).until(
-            EC.element_to_be_clickable((By.ID, "udbyder-close-button"))
-        )
-        if notifications_close_button:
-            close_notifications_popup(browser)
-            print("Should have closed notification popup")
-
-        if not browser.execute_script("return document.readyState") == "complete":
-            browser.refresh()
-            time.sleep(2)
-
-    except TimeoutException:
-        pass
-    print("Now trying to click 'Dataadministration' button")
-    return click_element_with_retries(browser, By.XPATH, "/html/body/div[1]/div/div[2]/div[2]/div/div[2]/div/h3/a")
-
-
-def enter_organisation(browser, org, instregnr):
-    """Navigate to the organization and click the necessary elements."""
-    for attempt in range(MAX_RETRIES):
-        try:
-            print(f"Processing organisation: {org}, InstRegNr: {instregnr}")
-            browser.get('https://tilslutning.stil.dk/tilslutning?select-organisation=true')
-            browser.refresh()
-
-            if org == "Dagtilbud":
-                print("Switching to Dagtilbud tab...")
-                dagtilbud_button = WebDriverWait(browser, 20).until(
-                    EC.element_to_be_clickable((By.ID, "dagtilbud-tab-button"))
-                )
-                dagtilbud_button.click()
-
-            row = WebDriverWait(browser, 20).until(
-                EC.visibility_of_element_located((By.XPATH, f"//*[contains(text(), '{instregnr}')]"))
-            )
-            browser.execute_script("arguments[0].scrollIntoView(true);", row)
-            click_element_with_retries(browser, By.XPATH, f"//*[contains(text(), '{instregnr}')]")
-            print(f"Clicked row for {instregnr}...")
-
-            if enter_dataadministration(browser):
-                return
-        except (TimeoutException, NoSuchElementException) as e:
-            print(f"Error finding organisation {org}, InstRegNr: {instregnr} on attempt {attempt + 1}. Exception: {e}")
-            time.sleep(RETRY_DELAY)
-
-    print(f"Couldn't find organisation {org}, InstRegNr: {instregnr} after {MAX_RETRIES} attempts.")
-
-
-def close_notifications_popup(browser):
-    """Close any notification popups that may obstruct the automation process."""
-    try:
-        print("Trying to close notification popup")
-        click_element_with_retries(browser, By.ID, "udbyder-close-button")
-
-    except TimeoutException:
-        print("No notification popup found or close button not clickable.")
+    return

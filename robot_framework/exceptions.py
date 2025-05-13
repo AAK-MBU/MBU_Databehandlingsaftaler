@@ -1,6 +1,7 @@
 """This module contains various functions and classes to handle errors in the framework."""
 
 import traceback
+import requests
 
 from OpenOrchestrator.database.queues import QueueElement, QueueStatus
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
@@ -11,6 +12,28 @@ from robot_framework import error_screenshot
 
 class BusinessError(Exception):
     """An empty exception used to identify errors caused by breaking business rules"""
+
+
+class ResponseError(Exception):
+    """Custom exception to handle request response errors"""
+    def __init__(self, response: requests.Response):
+        """
+        Custom exception to handle requests response.
+
+        Args:
+            response (requests.Response): The response object from requests.
+        """
+        self.response = response
+        super().__init__(self._generate_message())
+
+    def _generate_message(self):
+        """
+        Generate a message based on the response.
+
+        Returns:
+            str: The generated message.
+        """
+        return f"Status Code: {self.response.status_code}, Response: {self.response.text}"
 
 
 def handle_error(message: str, error: Exception, queue_element: QueueElement | None, orchestrator_connection: OrchestratorConnection) -> None:
@@ -28,10 +51,12 @@ def handle_error(message: str, error: Exception, queue_element: QueueElement | N
     error_msg = f"{message}: {repr(error)}\n\nTrace:\n{traceback.format_exc()}"
     error_email = orchestrator_connection.get_constant(config.ERROR_EMAIL).value
 
+    error_msg = error_msg[:500] + "..." + error_msg[-497:] if len(error_msg) > 1000 else error_msg
+
     orchestrator_connection.log_error(error_msg)
     if queue_element:
         orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, error_msg)
-    error_screenshot.send_error_screenshot(error_email, error, orchestrator_connection.process_name)
+    error_screenshot.send_error_screenshot(error_email, error, orchestrator_connection.process_name, queue_element)
 
 
 def log_exception(orchestrator_connection: OrchestratorConnection) -> callable:

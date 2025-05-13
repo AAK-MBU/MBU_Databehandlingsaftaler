@@ -5,13 +5,14 @@ from email.message import EmailMessage
 import base64
 import traceback
 from io import BytesIO
+from OpenOrchestrator.database.queues import QueueElement
 
 from PIL import ImageGrab
 
 from robot_framework import config
 
 
-def send_error_screenshot(to_address: str | list[str], exception: Exception, process_name: str):
+def send_error_screenshot(to_address: str | list[str], exception: Exception, process_name: str, queue_element: QueueElement | None = None):
     """Sends an email with an error report, including a screenshot, when an exception occurs.
     Configuration details such as SMTP server, port, sender email, etc., should be set in 'config' module.
 
@@ -38,6 +39,7 @@ def send_error_screenshot(to_address: str | list[str], exception: Exception, pro
         <body>
             <p>Error type: {type(exception).__name__}</p>
             <p>Error message: {exception}</p>
+            <p>Queue ID: {queue_element.id}</p>
             <p>{traceback.format_exc()}</p>
             <img src="data:image/png;base64,{screenshot_base64}" alt="Screenshot">
         </body>
