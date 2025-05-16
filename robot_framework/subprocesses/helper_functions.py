@@ -2,6 +2,7 @@
 import json
 import sys
 import requests
+from requests import Session
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -13,34 +14,32 @@ from robot_framework.exceptions import ResponseError
 from robot_framework.config import REQUEST_TIMEOUT
 
 
-def get_org_dict(base_cookie, cookie_inst_list):
+def get_org_dict(session: Session):
     """Get dict of all organisations"""
-    inst_dict = get_inst_dict(base_cookie, cookie_inst_list)
-    dag_dict = get_dag_dict(base_cookie, cookie_inst_list)
+    inst_dict = get_inst_dict(session)
+    dag_dict = get_dag_dict(session)
     org_dict = inst_dict | dag_dict
     
     return org_dict
 
 
-def get_inst_dict(base_cookie, cookie_inst_list):
+def get_inst_dict(session: Session):
     """Get dict of institutions"""
-    resp_inst_list = requests.get(
-        "https://tilslutning.stil.dk/tilslutningBE/organisationer/institutioner",
-        headers={"Cookie": f"{base_cookie};{cookie_inst_list}"},
+    resp_inst_list = session.get(
+        "https://tilslutning.stil.dk/tilslutningBE/organisationer",
         timeout=10
     )
 
     inst_json = json.loads(resp_inst_list.text)
-    inst_payload_dict = {org["kode"]: org for org in inst_json["organisationer"]}
+    inst_payload_dict = {org["kode"]: org for org in inst_json["institutioner"]}
 
     return inst_payload_dict
 
 
-def get_dag_dict(base_cookie, cookie_inst_list):
+def get_dag_dict(session: Session):
     """Get dict of dagtilbud"""
-    resp_dag_list = requests.get(
-        "https://tilslutning.stil.dk/tilslutningBE/organisationer/dagtilbud",
-        headers={"Cookie": f"{base_cookie};{cookie_inst_list}"},
+    resp_dag_list = session.get(
+        "https://tilslutning.stil.dk/tilslutningBE/organisationer",
         timeout=10
     )
 
@@ -49,7 +48,7 @@ def get_dag_dict(base_cookie, cookie_inst_list):
         raise ResponseError(f"Error while fetching institution lists: {resp_dag_list = }")
     
     dag_json = json.loads(resp_dag_list.text)
-    dag_payload_dict = {org["kode"]: org for org in dag_json["organisationer"]}
+    dag_payload_dict = {org["kode"]: org for org in dag_json["dagtilbud"]}
 
     return dag_payload_dict
 
@@ -130,7 +129,7 @@ def get_payload(org_num: str, runtime_args: dict):
     return payload
 
 
-def get_org(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, runtime_args: dict):
+def get_org(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, runtime_args: dict, session: Session):
     """Accesses organisation related to queue element"""
     queue_data = json.loads(queue_element.data) if isinstance(queue_element, QueueElement) else queue_element
     org_type = queue_data["Organisation"]
@@ -138,7 +137,7 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 
     payload = get_payload(org_num, runtime_args)
 
-    resp_get_org = requests.post(
+    resp_get_org = session.post(
         "https://tilslutning.stil.dk/tilslutningBE/active-organisation",
         headers={
             "Cookie": f"{runtime_args['base_cookie']};{runtime_args['cookie_inst_list']}",
@@ -157,15 +156,14 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     return resp_get_org
 
 
-def get_data(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, runtime_args: dict, org_cookie: str):
+def get_data(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, session: Session):
     """Retrieves data for organization"""
     queue_data = json.loads(queue_element.data) if isinstance(queue_element, QueueElement) else queue_element
     org_type = queue_data["Organisation"]
     org_num = queue_data["Instregnr"]
 
-    resp_get_data = requests.get(
+    resp_get_data = session.get(
             "https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/hent",
-            headers={"Cookie": f"{runtime_args['base_cookie']};{org_cookie}"},
             timeout=REQUEST_TIMEOUT
         )
     if not resp_get_data.status_code == 200:
@@ -177,15 +175,11 @@ def get_data(orchestrator_connection: OrchestratorConnection, queue_element: Que
     return agreements_dict
 
 
-def delete_agreement(orchestrator_connection: OrchestratorConnection, agreement: dict, runtime_args: dict, org_cookie: str):
+def delete_agreement(orchestrator_connection: OrchestratorConnection, agreement: dict, session: Session):
     """Deletes inputted agreement"""
     agreement_id = agreement["id"]
-    delete_resp = requests.delete(
+    delete_resp = session.delete(
         f"https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/slet/{agreement_id}",
-        headers={
-            "Cookie": f"{runtime_args['base_cookie']};{org_cookie}",
-            "x-xsrf-token": runtime_args['x-xsrf-token'],
-        },
         timeout=REQUEST_TIMEOUT
     )
     if not delete_resp.status_code == 200:
@@ -194,7 +188,7 @@ def delete_agreement(orchestrator_connection: OrchestratorConnection, agreement:
     return delete_resp
 
 
-def change_status(orchestrator_connection: OrchestratorConnection, reference: str, agreement: dict, runtime_args: dict, org_cookie: str):
+def change_status(orchestrator_connection: OrchestratorConnection, reference: str, agreement: dict, session: Session):
     """Changes status for inputted agreement based on reference"""
 
     set_status = get_status(reference)
@@ -207,12 +201,10 @@ def change_status(orchestrator_connection: OrchestratorConnection, reference: st
     payload = {"aftaleid": agreement['id'], "status": set_status, "kommentar": None}
     payload = json.dumps(payload)
 
-    status_resp = requests.post(
+    status_resp = session.post(
         "https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/setStatus",
         headers={
-            "Cookie": f"{runtime_args['base_cookie']};{org_cookie}",
-            "x-xsrf-token": runtime_args['x-xsrf-token'],
-            "accept": "application/json",
+            "accept": "application/json",  # maybe this in session header too?
             "content-type": "application/json",
             "Accept": "*/*"
         },
