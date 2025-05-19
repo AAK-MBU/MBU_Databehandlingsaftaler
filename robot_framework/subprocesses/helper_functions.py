@@ -14,12 +14,34 @@ from robot_framework.exceptions import ResponseError
 from robot_framework.config import REQUEST_TIMEOUT
 
 
+def flatten_dict(d, parent_key='', sep='_'):
+    """
+    Flatten a nested dictionary.
+
+    Args:
+        d (dict): The dictionary to flatten.
+        parent_key (str): The base key string for nested keys.
+        sep (str): Separator between keys.
+
+    Returns:
+        dict: A flattened dictionary.
+    """
+    items = {}
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
+
+
 def get_org_dict(session: Session):
     """Get dict of all organisations"""
     inst_dict = get_inst_dict(session)
     dag_dict = get_dag_dict(session)
     org_dict = inst_dict | dag_dict
-    
+
     return org_dict
 
 
@@ -140,8 +162,8 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     resp_get_org = session.post(
         "https://tilslutning.stil.dk/tilslutningBE/active-organisation",
         headers={
-            "Cookie": f"{runtime_args['base_cookie']};{runtime_args['cookie_inst_list']}",
-            "x-xsrf-token": runtime_args['x-xsrf-token'],
+            # "Cookie": f"{runtime_args['base_cookie']};{runtime_args['cookie_inst_list']}",
+            # "x-xsrf-token": runtime_args['x-xsrf-token'],
             "accept": "application/json",
             "content-type": "application/json",
             "Accept": "*/*"
