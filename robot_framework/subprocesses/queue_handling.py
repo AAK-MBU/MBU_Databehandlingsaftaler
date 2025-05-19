@@ -82,7 +82,7 @@ def process_queue_element(orchestrator_connection: OrchestratorConnection, queue
 
         orchestrator_connection.log_trace(f"Status successfully changed. Info: {info_dict}")
     elif wanted_status == "SLETTET":
-        delete_resp = delete_agreement(orchestrator_connection, agreement, runtime_args, org_cookie)
+        delete_resp = delete_agreement(orchestrator_connection, agreement, session)
 
         info_dict["slet respons"] = delete_resp.text
 
