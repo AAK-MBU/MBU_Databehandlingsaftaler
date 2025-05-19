@@ -19,12 +19,9 @@ def initialize(orchestrator_connection: OrchestratorConnection) -> None:
         orchestrator_connection.log_trace("Changes retrieved. Uploading to queue.")
         upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connection)
         orchestrator_connection.log_trace("Queue upload completed.")
+
     if "overview" in oc_args["process"]:
-        connection_string = orchestrator_connection.get_constant("DbConnectionString").value
         base_dir = oc_args['base_dir']
-        notification_mail = oc_args['notification_mail']
-        # dagtilbud = oc_args['dagtilbud']
-        # institutioner = oc_args['institutioner']
         orchestrator_connection.log_trace("Starting overview creation.")
         run_overview_creation(orchestrator_connection)
         orchestrator_connection.log_trace("Overview creation completed.")
