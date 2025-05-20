@@ -26,7 +26,7 @@ def store_overview(agreements_df: pd.DataFrame, base_dir: str):
     agreements_df["statusændring"] = ""
     cols_left = ["inst_kode", "inst_navn", "aktuelStatus", "statusændring"]
     agreements_df = agreements_df[cols_left + [c for c in agreements_df.columns if c not in cols_left]]
-    filename = os.path.join(base_dir, f"dataaftaler_oversigt_{datetime.now().strftime("%d%m%Y")}.xlsx")
+    filename = os.path.join(base_dir, "Output", f"dataaftaler_oversigt_{datetime.now().strftime("%d%m%Y")}.xlsx")
 
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
         agreements_df.to_excel(writer, index=False, sheet_name='Oversigt')
