@@ -1,5 +1,6 @@
 """This module handles creation of overview"""
 import json
+import time
 import os
 from datetime import datetime
 import pandas as pd
@@ -88,7 +89,17 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     # Get agreements from each organization
     orchestrator_connection.log_trace(f"Fetching agreements from {len(org_dict.keys())} institutions")
     print(f"Fetching agreements from {len(org_dict.keys())} institutions")
-    for v in tqdm(org_dict.values()):
+    api_counter = 0
+    start = time.time()
+    for v in (pbar := tqdm(org_dict.values())):
+        if (api_counter > 400 and time.time() - start < 60):
+            wait_msg = f"{api_counter} calls in {time.time()-start:.1f} seconds. Pausing for 30 seconds"
+            orchestrator_connection.log_info(wait_msg)
+            pbar.write(wait_msg)
+            time.sleep(30)
+            api_counter = 0
+            start = time.time()
+            pbar.write("Continuing...")
         queue_element = {"Organisation": v["type"], "Instregnr": v["kode"]}
         org_response = get_org(orchestrator_connection, queue_element, runtime_args, session)
 
@@ -107,6 +118,7 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
             agreement["inst_navn"] = v['navn']
             all_agreements.append(agreement)
 
+        api_counter += 2
     # Store all agreements in directory
     agreements_df = pd.DataFrame(all_agreements)
     base_dir = oc_args["base_dir"]
