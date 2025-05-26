@@ -4,6 +4,7 @@
 # pylint: disable=duplicate-code
 
 import sys
+import json
 
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 from OpenOrchestrator.database.queues import QueueStatus
@@ -26,34 +27,38 @@ def main():
     queue_element = None
     error_count = 0
     task_count = 0
-    # Retry loop
-    for _ in range(config.MAX_RETRY_COUNT):
-        try:
-            reset.reset(orchestrator_connection)
 
-            # Queue loop
-            while task_count < config.MAX_TASK_COUNT:
-                task_count += 1
-                queue_element = orchestrator_connection.get_next_queue_element(config.QUEUE_NAME)
+    # Run only when process
+    oc_args = json.loads(orchestrator_connection.process_arguments)
+    if oc_args['process'] == "handle_queue":
+        # Retry loop
+        for _ in range(config.MAX_RETRY_COUNT):
+            try:
+                reset.reset(orchestrator_connection)
 
-                if not queue_element:
-                    orchestrator_connection.log_info("Queue empty.")
-                    break  # Break queue loop
+                # Queue loop
+                while task_count < config.MAX_TASK_COUNT:
+                    task_count += 1
+                    queue_element = orchestrator_connection.get_next_queue_element(config.QUEUE_NAME)
 
-                try:
-                    process.process(orchestrator_connection)
-                    orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE)
+                    if not queue_element:
+                        orchestrator_connection.log_info("Queue empty.")
+                        break  # Break queue loop
 
-                except BusinessError as error:
-                    handle_error("Business Error", error, queue_element, orchestrator_connection)
+                    try:
+                        process.process(orchestrator_connection, queue_element)
+                        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.DONE)
 
-            break  # Break retry loop
+                    except BusinessError as error:
+                        handle_error("Business Error", error, queue_element, orchestrator_connection)
 
-        # We actually want to catch all exceptions possible here.
-        # pylint: disable-next = broad-exception-caught
-        except Exception as error:
-            error_count += 1
-            handle_error(f"Process Error #{error_count}", error, queue_element, orchestrator_connection)
+                break  # Break retry loop
+
+            # We actually want to catch all exceptions possible here.
+            # pylint: disable-next = broad-exception-caught
+            except Exception as error:
+                error_count += 1
+                handle_error(f"Process Error #{error_count}", error, queue_element, orchestrator_connection)
 
     reset.clean_up(orchestrator_connection)
     reset.close_all(orchestrator_connection)
