@@ -27,8 +27,8 @@ jobs:
 
     - name: Analysing the code with pylint
       run: |
-        pylint --rcfile=.pylintrc $(git ls-files '*.py')
+        uv run pylint --rcfile=.pylintrc $(git ls-files '*.py')
 
     - name: Analysing the code with flake8
       run: |
-        flake8 --extend-ignore=E501,E251 $(git ls-files '*.py')
+        uv run flake8 --extend-ignore=E501,E251 $(git ls-files '*.py')
