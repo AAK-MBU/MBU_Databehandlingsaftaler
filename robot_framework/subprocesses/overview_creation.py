@@ -88,7 +88,7 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     # Get agreements from each organization
     orchestrator_connection.log_trace(f"Fetching agreements from {len(org_dict.keys())} institutions")
     print(f"Fetching agreements from {len(org_dict.keys())} institutions")
-    for k, v in tqdm(org_dict.items()):
+    for v in tqdm(org_dict.values()):
         queue_element = {"Organisation": v["type"], "Instregnr": v["kode"]}
         org_response = get_org(orchestrator_connection, queue_element, runtime_args, session)
 

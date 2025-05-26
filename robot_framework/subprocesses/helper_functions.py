@@ -65,7 +65,7 @@ def get_dag_dict(session: Session):
     )
 
     # convert response to dicts of payloads
-    if not (resp_dag_list.status_code == 200):
+    if not resp_dag_list.status_code == 200:
         raise ResponseError(f"Error while fetching institution lists: {resp_dag_list = }")
 
     dag_json = json.loads(resp_dag_list.text)
