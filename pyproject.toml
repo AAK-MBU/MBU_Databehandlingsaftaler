@@ -19,6 +19,7 @@ dependencies = [
     "selenium == 4.23.1",
     "pandas",
     "openpyxl",
+    "requests",
 ]
 
 [project.optional-dependencies]

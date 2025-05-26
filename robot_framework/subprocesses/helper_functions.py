@@ -1,7 +1,6 @@
 """Helper functions"""
 import json
 import sys
-import requests
 from requests import Session
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -68,7 +67,7 @@ def get_dag_dict(session: Session):
     # convert response to dicts of payloads
     if not (resp_dag_list.status_code == 200):
         raise ResponseError(f"Error while fetching institution lists: {resp_dag_list = }")
-    
+
     dag_json = json.loads(resp_dag_list.text)
     dag_payload_dict = {org["kode"]: org for org in dag_json["dagtilbud"]}
 
@@ -216,7 +215,7 @@ def change_status(orchestrator_connection: OrchestratorConnection, reference: st
     set_status = get_status(reference)
 
     if set_status is None:
-        raise ValueError(f"reference status: {reference.split("_")[0]} does not match any of 'Godkend', 'Vent', or 'Slet'")
+        raise ValueError(f"reference status: {reference.split('_')[0]} does not match any of 'Godkend', 'Vent', or 'Slet'")
 
     orchestrator_connection.log_trace(f"Setting status from {agreement["aktuelStatus"]} to {set_status}")
 
