@@ -14,9 +14,6 @@ Make sure to include the following process arguments:
 - `"process": "create_overview"`
 - `"base_dir": <directory_path>`
 - `"notification_email": <email_address>`
-- `"institutioner": <'False' or 'True' (if you want to include institutioner in the overview creation)>`
-- `"Dagtilbud": <'False' or 'True' (if you want to include dagtilbud in the overview creation)>`
-
 ## Upload Changes To Queue
 
 This process retrieves the agreements from the overview Excel file where the column 'statusændring' contains "VENTER", "GODKEND", or "SLET". 
