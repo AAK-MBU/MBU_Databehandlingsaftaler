@@ -217,7 +217,7 @@ def change_status(orchestrator_connection: OrchestratorConnection, reference: st
     if set_status is None:
         raise ValueError(f"reference status: {reference.split('_')[0]} does not match any of 'Godkend', 'Vent', or 'Slet'")
 
-    orchestrator_connection.log_trace(f"Setting status from {agreement["aktuelStatus"]} to {set_status}")
+    orchestrator_connection.log_trace(f"Setting status from {agreement['aktuelStatus']} to {set_status}")
 
     payload = {"aftaleid": agreement['id'], "status": set_status, "kommentar": None}
     payload = json.dumps(payload)
