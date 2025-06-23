@@ -25,7 +25,7 @@ from robot_framework.exceptions import ResponseError
 def store_overview(agreements_df: pd.DataFrame, base_dir: str):
     """Function to store overview as excel"""
     agreements_df["statusændring"] = ""
-    cols_left = ["Instregnr", "inst_navn", "status", "statusændring", "systemNavn", "systemBeskrivelse", "serviceNavn", "Kontaktperson"]
+    cols_left = ["Instregnr", "inst_navn", "status", "statusændring", "systemNavn", "systemBeskrivelse", "serviceNavn", "udbyderNavn", "Kontaktperson"]
     agreements_df = agreements_df[cols_left]
     filename = os.path.join(base_dir, "Output", f"dataaftaler_oversigt_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
@@ -129,6 +129,7 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
         "stilService_servicenavn": "serviceNavn",
         "udbyderSystemOgUdbyder_navn": "systemNavn",
         "udbyderSystemOgUdbyder_beskrivelse": "systemBeskrivelse",
+        "udbyderSystemOgUdbyder_udbyder_navn": "udbyderNavn",
         "udbyderSystemOgUdbyder_kontaktperson_navn": "Kontaktperson"
     }
     agreements_df = agreements_df.rename(columns=cols_rename)
