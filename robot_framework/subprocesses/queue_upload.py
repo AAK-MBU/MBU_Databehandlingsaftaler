@@ -45,9 +45,9 @@ def retrieve_changes(base_dir):
     filtered_delete_df = df[(df['statusændring'] == 'SLET') & (df['status'] != 'SLETTET')]
     filtered_wait_df = df[(df['statusændring'] == 'VENT') & (df['status'] != 'VENTER')]
 
-    approve_data = filtered_approve_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
-    delete_data = filtered_delete_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
-    wait_data = filtered_wait_df[['Organisation', 'Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
+    approve_data = filtered_approve_df[['Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
+    delete_data = filtered_delete_df[['Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
+    wait_data = filtered_wait_df[['Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
 
     total_changes = len(approve_data) + len(delete_data) + len(wait_data)
     print(f"Total changes: {total_changes}")

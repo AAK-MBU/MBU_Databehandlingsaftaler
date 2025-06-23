@@ -82,7 +82,9 @@ def switch_to_new_tab(browser: webdriver.Chrome):
 
 def open_stil_connection():
     """Opens STIL, waiting for user to log in."""
-    browser = webdriver.Chrome()
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument('log-level=3')
+    browser = webdriver.Chrome(options=chrome_options)
     browser.maximize_window()
     browser.get("https://tilslutning.stil.dk/tilslutning/login")
     try:
@@ -153,7 +155,6 @@ def get_payload(org_num: str, runtime_args: dict):
 def get_org(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, runtime_args: dict, session: Session):
     """Accesses organisation related to queue element"""
     queue_data = json.loads(queue_element.data) if isinstance(queue_element, QueueElement) else queue_element
-    org_type = queue_data["Organisation"]
     org_num = queue_data["Instregnr"]
 
     payload = get_payload(org_num, runtime_args)
@@ -171,7 +172,7 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         timeout=REQUEST_TIMEOUT
     )
     if not resp_get_org.status_code == 200:
-        orchestrator_connection.log_error(f"Error fetching organisation: {org_type = }, {org_num = }")
+        orchestrator_connection.log_error(f"Error fetching organisation: {org_num = }")
         raise ResponseError(resp_get_org)
 
     return resp_get_org
@@ -180,7 +181,6 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 def get_data(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, session: Session):
     """Retrieves data for organization"""
     queue_data = json.loads(queue_element.data) if isinstance(queue_element, QueueElement) else queue_element
-    org_type = queue_data["Organisation"]
     org_num = queue_data["Instregnr"]
 
     resp_get_data = session.get(
@@ -188,7 +188,7 @@ def get_data(orchestrator_connection: OrchestratorConnection, queue_element: Que
             timeout=REQUEST_TIMEOUT
         )
     if not resp_get_data.status_code == 200:
-        orchestrator_connection.log_error(f"Error while accessing data for organization: {org_type = }, {org_num = }")
+        orchestrator_connection.log_error(f"Error while accessing data for organization: {org_num = }")
         raise ResponseError(resp_get_data)
 
     data_access_json = json.loads(resp_get_data.text)

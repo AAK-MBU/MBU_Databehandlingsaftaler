@@ -25,8 +25,8 @@ from robot_framework.exceptions import ResponseError
 def store_overview(agreements_df: pd.DataFrame, base_dir: str):
     """Function to store overview as excel"""
     agreements_df["statusændring"] = ""
-    cols_left = ["inst_kode", "inst_navn", "aktuelStatus", "statusændring"]
-    agreements_df = agreements_df[cols_left + [c for c in agreements_df.columns if c not in cols_left]]
+    cols_left = ["Instregnr", "inst_navn", "status", "statusændring", "systemNavn", "systemBeskrivelse", "serviceNavn", "Kontaktperson"]
+    agreements_df = agreements_df[cols_left]
     filename = os.path.join(base_dir, "Output", f"dataaftaler_oversigt_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
@@ -92,7 +92,7 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     api_counter = 0
     start = time.time()
     for v in (pbar := tqdm(org_dict.values())):
-        if (api_counter > 400 and time.time() - start < 60):
+        if (api_counter >= 200 and time.time() - start < 60):
             wait_msg = f"{api_counter} calls in {time.time()-start:.1f} seconds. Pausing for 30 seconds"
             orchestrator_connection.log_info(wait_msg)
             pbar.write(wait_msg)
@@ -114,15 +114,26 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
         # Format agreements and append to all agreements
         agreements = [flatten_dict(vv) for vv in agreements_dict_raw.values()]
         for agreement in agreements:
-            agreement["inst_kode"] = agreement.pop("ejer")
+            agreement["Instregnr"] = agreement.pop("ejer")
             agreement["inst_navn"] = v['navn']
             all_agreements.append(agreement)
 
         api_counter += 2
+    
     # Store all agreements in directory
     agreements_df = pd.DataFrame(all_agreements)
+    # Rename columns
+    cols_rename = {
+        "inst_kode": "Instregnr",
+        "aktuelStatus": "status",
+        "stilService_servicenavn": "serviceNavn",
+        "udbyderSystemOgUdbyder_navn": "systemNavn",
+        "udbyderSystemOgUdbyder_beskrivelse": "systemBeskrivelse",
+        "udbyderSystemOgUdbyder_kontaktperson_navn": "Kontaktperson"
+    }
+    agreements_df = agreements_df.rename(columns=cols_rename)
     base_dir = oc_args["base_dir"]
-    print(f"{len(all_agreements)} agreements fetched. Storing in {base_dir}")
+    print(f"{len(all_agreements)} agreements for {pd.unique(agreements_df['Instregnr'])} institutions fetched. Storing in {base_dir}")
     store_overview(agreements_df, base_dir)
 
     orchestrator_connection.log_trace(f"{len(all_agreements)} dataaftaler fetched and stored in {base_dir}")

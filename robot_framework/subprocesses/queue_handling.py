@@ -31,7 +31,6 @@ def process_queue_element(orchestrator_connection: OrchestratorConnection, queue
 
     # Build info dict
     info_dict = {
-        "organisation": queue_data["Organisation"],
         "institutionsnr": queue_data["Instregnr"],
         "system navn": system_name,
         "status før (fra kø element)": current_status,
@@ -54,17 +53,16 @@ def process_queue_element(orchestrator_connection: OrchestratorConnection, queue
     dict_lookup = f"{system_name}_{service_name}_{current_status}"
     agreement = agreements_dict.get(dict_lookup, None)
 
-    # Add info to infodict
-    info_dict["aftaleid"] = agreement.get("id", "Id not found")
-
     if agreement is None:
+        # Add info to infodict
+        info_dict["aftaleid"] = agreement.get("id", "Id not found")
         dict_lookup_ok = f"{system_name}_{service_name}_{wanted_status}"
         agreement_ok = agreements_dict.get(dict_lookup_ok, None)
         if agreement_ok is not None:
             info_dict["status før (fra fundet aftale)"] = agreement_ok["aktuelStatus"]
             orchestrator_connection.log_trace(f"Status already ok. Info: {info_dict}")
             return
-        orchestrator_connection.log_error(f"{system_name = } with {service_name = } and {current_status = } not found in agreements for {info_dict['organisation']} {info_dict['institutionsnr']}")
+        orchestrator_connection.log_error(f"{system_name = } with {service_name = } and {current_status = } not found in agreements for {info_dict['institutionsnr']}")
         raise BusinessError()
 
     if not agreement['aktuelStatus'] == current_status:
@@ -73,7 +71,7 @@ def process_queue_element(orchestrator_connection: OrchestratorConnection, queue
             f"does not match current status from queue element: {current_status}"
         )
 
-    orchestrator_connection.log_trace(f"Handling agreement: {system_name = } with {service_name = } and {current_status = } for {info_dict['organisation']} {info_dict['institutionsnr']}")
+    orchestrator_connection.log_trace(f"Handling agreement: {system_name = } with {service_name = } and {current_status = } for {info_dict['institutionsnr']}")
 
     if wanted_status in ["GODKENDT", "VENTER"]:
         status_resp = change_status(orchestrator_connection, reference, agreement, session)
