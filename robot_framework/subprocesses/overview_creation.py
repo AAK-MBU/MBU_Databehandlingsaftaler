@@ -29,6 +29,8 @@ def store_overview(agreements_df: pd.DataFrame, base_dir: str):
     agreements_df = agreements_df[cols_left]
     filename = os.path.join(base_dir, "Output", f"dataaftaler_oversigt_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
+    os.makedirs(os.path.join(base_dir, "Output"), exist_ok=True)
+
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
         agreements_df.to_excel(writer, index=False, sheet_name='Oversigt')
         worksheet = writer.sheets['Oversigt']
@@ -89,6 +91,7 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     # Get agreements from each organization
     orchestrator_connection.log_trace(f"Fetching agreements from {len(org_dict.keys())} institutions")
     print(f"Fetching agreements from {len(org_dict.keys())} institutions")
+    orgs_without_agr = []
     api_counter = 0
     start = time.time()
     for v in (pbar := tqdm(org_dict.values())):
@@ -113,6 +116,8 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
         agreements_dict_raw = get_data(orchestrator_connection, queue_element, session)
         # Format agreements and append to all agreements
         agreements = [flatten_dict(vv) for vv in agreements_dict_raw.values()]
+        if len(agreements) == 0:
+            orgs_without_agr.append(queue_element)
         for agreement in agreements:
             agreement["Instregnr"] = agreement.pop("ejer")
             agreement["inst_navn"] = v['navn']
@@ -134,7 +139,8 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     }
     agreements_df = agreements_df.rename(columns=cols_rename)
     base_dir = oc_args["base_dir"]
-    print(f"{len(all_agreements)} agreements for {pd.unique(agreements_df['Instregnr'])} institutions fetched. Storing in {base_dir}")
+    print(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
+    print(f"{len(orgs_without_agr)} institutions have no dataagreements: {"\n".join([str(i) for i in orgs_without_agr])}")
     store_overview(agreements_df, base_dir)
 
     orchestrator_connection.log_trace(f"{len(all_agreements)} dataaftaler fetched and stored in {base_dir}")
