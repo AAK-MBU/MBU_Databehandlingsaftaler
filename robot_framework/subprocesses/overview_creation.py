@@ -141,8 +141,8 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     base_dir = oc_args["base_dir"]
     print(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
     orchestrator_connection.log_trace(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
-    print(f"{len(orgs_without_agr)} institutions have no dataagreements: {"\n".join([str(i) for i in orgs_without_agr])}")
-    orchestrator_connection.log_trace(f"{len(orgs_without_agr)} institutions have no dataagreements: {"\n".join([str(i) for i in orgs_without_agr])}")
+    print(f"{len(orgs_without_agr)} institutions have no dataagreements: {'\n'.join([str(i) for i in orgs_without_agr])}")
+    orchestrator_connection.log_trace(f"{len(orgs_without_agr)} institutions have no dataagreements: {'\n'.join([str(i) for i in orgs_without_agr])}")
     store_overview(agreements_df, base_dir)
 
     orchestrator_connection.log_trace(f"{len(all_agreements)} dataaftaler fetched and stored in {base_dir}")
