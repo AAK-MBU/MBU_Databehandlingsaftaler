@@ -1,38 +1,49 @@
-# Databehandlingsaftaler
+# Dataaftaler
 
-A robot designed to streamline two processes when working with databehandlingsaftaler in STIL.
+Hurtigt overblik over eksisterende dataaftaler, samt opdatering af aftaler i STIL.
 
-## Overview Creation
+Robotten har tre dele:
+1. **[Overview creation](#overview-creation)** <br>
+    Eksporterer et Excel-ark med alle eksisterende dataaftaler
+2. **[Upload queue](#upload-queue)** <br>
+    Uploader dataaftaler, som skal opdateres, til OpenOrchestrator kø
+3. **[Handle queue](#handle-queue)** <br>
+    Opdaterer dataaftaler i STIL.
 
-This robot exports agreements for all institutioner and dagtilbud and creates an overview.
-A column titled "statusændring" is added to mark a new status with "VENTER," "GODKEND," or "SLET."
+For at køre robotten kræver det følgende:
+- Adgang til [tilslutning.stil.dk](https://tilslutning.stil.dk)
+- [OpenOrchestrator](https://pypi.org/project/OpenOrchestrator/) opsætning
 
-### Usage
+Robotten fungerer som en "attended" robot, og agerer på vegne af en medarbejder, som logger ind.
+Robottens nuværende konfiguration, antager at medarbejderen er ansat i Aarhus Kommune, og tilgår Lokal IdP for Aarhus Kommune.
 
-You can run the process either locally or from OpenOrchestrator.
-Make sure to include the following process arguments: 
-- `"process": "create_overview"`
-- `"base_dir": <directory_path>`
-- `"notification_email": <email_address>`
-## Upload Changes To Queue
+## Overview creation
 
-This process retrieves the agreements from the overview Excel file where the column 'statusændring' contains "VENTER", "GODKEND", or "SLET". 
-Uploads the retrived agreements as element to a queue.
-Make sure that the overview file is placed in a folder named "Output" within the `base_dir`.
+Robotten eksporterer et Excelark med alle eksisterende dataaftaler fundet i STIL. Arket eksporteres til `base_dir`/Output.
+Dette foregår i tre trin:
+1. Robotten tilgår login-siden til [STIL](https://tilslutning.stil.dk). Her skal brugeren af robotten selv logge ind.
+2. Robotten tilgår alle de listede institutioner, og henter deres dataaftaler
+3. Roboten eksporterer aftalerne til et Excel-ark.
 
-### Usage
+I Excel-arket bliver kolonnen "statusændring" tilføjet, med mulighed for at vælge hvilken status aftalen skal ændres til: "VENTER" "GODKEND" eller "SLET".
 
-You can run the process either locally or from OpenOrchestrator.
-Make sure to include the following process arguments: 
-- `"process": "queue_upload"`
-- `"base_dir": <directory_path>`
+Robotten pauser i 30 sekunder for hvert 200. API-kald (svarende til hver 100. institution).
 
+## Upload queue
 
-## Updating Changes
+Robotten modtager ændringer i dataftaler fra [Excel-arket](#overview-creation).
+Ændringerne er specificeret af kolonnen 'statusændring', og disse ændringer indlæses så i OpenOrchestrator kø.
+For at robotten kan finde Excel-arket med de specificerede ændringer, skal arket gemmes som det eneste Excel-ark i `base_dir`/Output.
 
-This robot opens STIL and changes the status according to the queue elements. 
+## Handle queue
 
-You can run the process either locally or from OpenOrchestrator.
-Make sure to include the following process arguments: 
-- `"process": "handle_queue"`
-- `"notification_email": <email_address>`
+Robotten opdaterer de dataaftaler som er specificeret i den kø, der er blevet oprettet i [Upload changes to queue](#upload-changes-to-queue).
+Dette foregår i 2 trin:
+1. Robotten tilgår login-siden til [STIL](https://tilslutning.stil.dk). Her skal brugeren af robotten selv logge ind.
+2. Robotten opdaterer de dataaftaler, som skal er defineret i [køen](#upload-changes-to-queue)
+
+## Brug af robotten
+
+Robotten køres gennem [OpenOrchestrator](https://pypi.org/project/OpenOrchestrator/) ([dokumentation](https://itk-dev-rpa.github.io/OpenOrchestrator-docs/)). Her angives følgende i proces_arguments:
+- "process": "create_overview", "upload_queue" eller "handle_queue"
+- "base_dir": [sti til der, hvor filer skal gemmes] 
