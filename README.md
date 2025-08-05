@@ -27,7 +27,10 @@ Dette foregår i tre trin:
 
 I Excel-arket bliver kolonnen "statusændring" tilføjet, med mulighed for at vælge hvilken status aftalen skal ændres til: "VENTER" "GODKEND" eller "SLET".
 
-Robotten pauser i 30 sekunder for hvert 200. API-kald (svarende til hver 100. institution).
+Denne del af koden køres i [initialize.py](robot_framework/initialize.py)
+
+OBS: Robotten pauser i 30 sekunder for hvert 200. API-kald (svarende til hver 100. institution), for ikke at overbelaste API'et.
+
 
 ## Upload queue
 
@@ -35,12 +38,16 @@ Robotten modtager ændringer i dataftaler fra [Excel-arket](#overview-creation).
 Ændringerne er specificeret af kolonnen 'statusændring', og disse ændringer indlæses så i OpenOrchestrator kø.
 For at robotten kan finde Excel-arket med de specificerede ændringer, skal arket gemmes som det eneste Excel-ark i `base_dir`/Output.
 
+Denne del af koden køres i [initialize.py](robot_framework/initialize.py)
+
 ## Handle queue
 
 Robotten opdaterer de dataaftaler som er specificeret i den kø, der er blevet oprettet i [Upload changes to queue](#upload-changes-to-queue).
 Dette foregår i 2 trin:
 1. Robotten tilgår login-siden til [STIL](https://tilslutning.stil.dk). Her skal brugeren af robotten selv logge ind.
-2. Robotten opdaterer de dataaftaler, som skal er defineret i [køen](#upload-changes-to-queue)
+2. Robotten opdaterer de dataaftaler, som er defineret i [køen](#upload-changes-to-queue)
+
+Denne del af koden køres i [process.py](robot_framework/process.py)
 
 ## Brug af robotten
 
