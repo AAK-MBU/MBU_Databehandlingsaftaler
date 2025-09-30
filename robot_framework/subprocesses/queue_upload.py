@@ -5,6 +5,8 @@ import json
 import hashlib
 import pandas as pd
 
+from robot_framework.config import QUEUE_NAME
+
 
 def clean_instregnr(instregnr):
     """Removes any decimal point and digits after it from Instregnr."""
@@ -90,7 +92,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         if approve_data:
             print("Uploading Godkend data to queue...")
             orchestrator_connection.bulk_create_queue_elements(
-                "Databehandlingsaftale_Status_Queue",
+                QUEUE_NAME,
                 references=approve_references,
                 data=approve_data_json
             )
@@ -101,7 +103,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         if delete_references:
             print("Uploading Slet data to queue...")
             orchestrator_connection.bulk_create_queue_elements(
-                "Databehandlingsaftale_Status_Queue",
+                QUEUE_NAME,
                 references=delete_references,
                 data=delete_data_json
             )
@@ -112,7 +114,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         if wait_references:
             print("Uploading Vent data to queue...")
             orchestrator_connection.bulk_create_queue_elements(
-                "Databehandlingsaftale_Status_Queue",
+                QUEUE_NAME,
                 references=wait_references,
                 data=wait_data_json
             )
