@@ -21,14 +21,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install uv
         uv venv
-        uv pip install pylint
-        uv pip install flake8
+        uv pip install ruff
         uv pip install .
 
-    - name: Analysing the code with pylint
+    - name: Analysing the code with ruff
       run: |
-        uv run pylint --rcfile=.pylintrc $(git ls-files '*.py')
-
-    - name: Analysing the code with flake8
-      run: |
-        uv run flake8 --extend-ignore=E501,E251 $(git ls-files '*.py')
+        uv run ruff check
