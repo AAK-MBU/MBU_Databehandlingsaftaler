@@ -16,6 +16,7 @@ class BusinessError(Exception):
 
 class ResponseError(Exception):
     """Custom exception to handle request response errors"""
+
     def __init__(self, response: requests.Response):
         """
         Custom exception to handle requests response.
@@ -33,10 +34,17 @@ class ResponseError(Exception):
         Returns:
             str: The generated message.
         """
-        return f"Status Code: {self.response.status_code}, Response: {self.response.text}"
+        return (
+            f"Status Code: {self.response.status_code}, Response: {self.response.text}"
+        )
 
 
-def handle_error(message: str, error: Exception, queue_element: QueueElement | None, orchestrator_connection: OrchestratorConnection) -> None:
+def handle_error(
+    message: str,
+    error: Exception,
+    queue_element: QueueElement | None,
+    orchestrator_connection: OrchestratorConnection,
+) -> None:
     """Handles an error caught during the process.
     Logs an error to OpenOrchestrator.
     Marks the queue element (if any) as failed.
@@ -51,12 +59,20 @@ def handle_error(message: str, error: Exception, queue_element: QueueElement | N
     error_msg = f"{message}: {repr(error)}\n\nTrace:\n{traceback.format_exc()}"
     error_email = orchestrator_connection.get_constant(config.ERROR_EMAIL).value
 
-    error_msg = error_msg[:500] + "..." + error_msg[-497:] if len(error_msg) > 1000 else error_msg
+    error_msg = (
+        error_msg[:500] + "..." + error_msg[-497:]
+        if len(error_msg) > 1000
+        else error_msg
+    )
 
     orchestrator_connection.log_error(error_msg)
     if queue_element:
-        orchestrator_connection.set_queue_element_status(queue_element.id, QueueStatus.FAILED, error_msg)
-    error_screenshot.send_error_screenshot(error_email, error, orchestrator_connection.process_name, queue_element)
+        orchestrator_connection.set_queue_element_status(
+            queue_element.id, QueueStatus.FAILED, error_msg
+        )
+    error_screenshot.send_error_screenshot(
+        error_email, error, orchestrator_connection.process_name, queue_element
+    )
 
 
 def log_exception(orchestrator_connection: OrchestratorConnection) -> callable:
@@ -68,6 +84,10 @@ def log_exception(orchestrator_connection: OrchestratorConnection) -> callable:
     Returns:
         callable: A function that can be assigned to sys.excepthook.
     """
+
     def inner(exception_type, value, traceback_string):
-        orchestrator_connection.log_error(f"Uncaught Exception:\nType: {exception_type}\nValue: {value}\nTrace: {traceback_string}")
+        orchestrator_connection.log_error(
+            f"Uncaught Exception:\nType: {exception_type}\nValue: {value}\nTrace: {traceback_string}"
+        )
+
     return inner

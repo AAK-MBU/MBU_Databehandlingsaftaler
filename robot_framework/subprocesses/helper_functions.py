@@ -1,6 +1,7 @@
 # robot_framework/subprocesses/helper_functions.py
 
 """Helper functions"""
+
 import json
 import sys
 from requests import Session
@@ -15,7 +16,7 @@ from robot_framework.exceptions import ResponseError
 from robot_framework.config import REQUEST_TIMEOUT
 
 
-def flatten_dict(d, parent_key='', sep='_'):
+def flatten_dict(d, parent_key="", sep="_"):
     """
     Flatten a nested dictionary.
 
@@ -49,8 +50,7 @@ def get_org_dict(session: Session):
 def get_inst_dict(session: Session):
     """Get dict of institutions"""
     resp_inst_list = session.get(
-        "https://tilslutning.stil.dk/tilslutningBE/organisationer",
-        timeout=10
+        "https://tilslutning.stil.dk/tilslutningBE/organisationer", timeout=10
     )
 
     inst_json = json.loads(resp_inst_list.text)
@@ -62,13 +62,14 @@ def get_inst_dict(session: Session):
 def get_dag_dict(session: Session):
     """Get dict of dagtilbud"""
     resp_dag_list = session.get(
-        "https://tilslutning.stil.dk/tilslutningBE/organisationer",
-        timeout=10
+        "https://tilslutning.stil.dk/tilslutningBE/organisationer", timeout=10
     )
 
     # convert response to dicts of payloads
     if not resp_dag_list.status_code == 200:
-        raise ResponseError(f"Error while fetching institution lists: {resp_dag_list = }")
+        raise ResponseError(
+            f"Error while fetching institution lists: {resp_dag_list = }"
+        )
 
     dag_json = json.loads(resp_dag_list.text)
     dag_payload_dict = {org["kode"]: org for org in dag_json["dagtilbud"]}
@@ -77,7 +78,7 @@ def get_dag_dict(session: Session):
 
 
 def switch_to_new_tab(browser: webdriver.Chrome):
-    '''Switch to new tab.'''
+    """Switch to new tab."""
     if len(browser.window_handles) > 1:
         browser.switch_to.window(browser.window_handles[1])
 
@@ -85,7 +86,7 @@ def switch_to_new_tab(browser: webdriver.Chrome):
 def open_stil_connection():
     """Opens STIL, waiting for user to log in."""
     chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument('log-level=3')
+    chrome_options.add_argument("log-level=3")
     browser = webdriver.Chrome(options=chrome_options)
     browser.maximize_window()
     browser.get("https://tilslutning.stil.dk/tilslutning/login")
@@ -122,16 +123,16 @@ def get_browser_cookie(cookie_name, browser: webdriver.Chrome):
     """Retrieves base cookie from webdriver.Chrome instance"""
     cookie = None
     for c in browser.get_cookies():
-        if c['name'] == cookie_name:
+        if c["name"] == cookie_name:
             cookie = f"{c['name']}={c['value']}"
     return cookie
 
 
 def get_base_cookies(browser):
     """Retrieves base cookies for use in all calls"""
-    base_cookie = ''
+    base_cookie = ""
     for cookie_name in ["persistence-cookie", "SESSION", "XSRF-TOKEN"]:
-        base_cookie += (get_browser_cookie(cookie_name, browser)+";")
+        base_cookie += get_browser_cookie(cookie_name, browser) + ";"
     x_xsrf_token = get_browser_cookie("XSRF-TOKEN", browser).split("=", maxsplit=1)[-1]
     return base_cookie, x_xsrf_token
 
@@ -149,14 +150,25 @@ def get_payload(org_num: str, runtime_args: dict):
     """Retrieves needed payload from runtime args based on organisation type and number"""
     org_dict = runtime_args.get("org_dict", None)
     if org_dict is None:
-        raise ValueError(f"No organisation dictionary in runtime arguments: {runtime_args = }")
+        raise ValueError(
+            f"No organisation dictionary in runtime arguments: {runtime_args = }"
+        )
     payload = org_dict.get(org_num, None)
     return payload
 
 
-def get_org(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, runtime_args: dict, session: Session):
+def get_org(
+    orchestrator_connection: OrchestratorConnection,
+    queue_element: QueueElement | dict,
+    runtime_args: dict,
+    session: Session,
+):
     """Accesses organisation related to queue element"""
-    queue_data = json.loads(queue_element.data) if isinstance(queue_element, QueueElement) else queue_element
+    queue_data = (
+        json.loads(queue_element.data)
+        if isinstance(queue_element, QueueElement)
+        else queue_element
+    )
     org_num = queue_data["Instregnr"]
 
     payload = get_payload(org_num, runtime_args)
@@ -168,10 +180,10 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             # "x-xsrf-token": runtime_args['x-xsrf-token'],
             "accept": "application/json",
             "content-type": "application/json",
-            "Accept": "*/*"
+            "Accept": "*/*",
         },
         data=json.dumps(payload),
-        timeout=REQUEST_TIMEOUT
+        timeout=REQUEST_TIMEOUT,
     )
     if not resp_get_org.status_code == 200:
         orchestrator_connection.log_error(f"Error fetching organisation: {org_num = }")
@@ -180,52 +192,83 @@ def get_org(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     return resp_get_org
 
 
-def get_data(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | dict, session: Session):
+def get_data(
+    orchestrator_connection: OrchestratorConnection,
+    queue_element: QueueElement | dict,
+    session: Session,
+):
     """Retrieves data for organization"""
-    queue_data = json.loads(queue_element.data) if isinstance(queue_element, QueueElement) else queue_element
+    queue_data = (
+        json.loads(queue_element.data)
+        if isinstance(queue_element, QueueElement)
+        else queue_element
+    )
     org_num = queue_data["Instregnr"]
 
     resp_get_data = session.get(
-            "https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/hent",
-            timeout=REQUEST_TIMEOUT
-        )
+        "https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/hent",
+        timeout=REQUEST_TIMEOUT,
+    )
     if not resp_get_data.status_code == 200:
-        orchestrator_connection.log_error(f"Error while accessing data for organization: {org_num = }")
+        orchestrator_connection.log_error(
+            f"Error while accessing data for organization: {org_num = }"
+        )
         raise ResponseError(resp_get_data)
 
     data_access_json = json.loads(resp_get_data.text)
     try:
-        agreements_dict = {f"{agr['udbydersystem']['navn']}_{agr['stilService']['servicenavn']}_{agr['aktuelStatus']}": agr for agr in data_access_json if agr['stilService'] is not None}
+        agreements_dict = {
+            f"{agr['udbydersystem']['navn']}_{agr['stilService']['servicenavn']}_{agr['aktuelStatus']}": agr
+            for agr in data_access_json
+            if agr["stilService"] is not None
+        }
     except Exception:
         print(data_access_json)
         print("break")
     return agreements_dict
 
 
-def delete_agreement(orchestrator_connection: OrchestratorConnection, agreement: dict, session: Session):
+def delete_agreement(
+    orchestrator_connection: OrchestratorConnection, agreement: dict, session: Session
+):
     """Deletes inputted agreement"""
     agreement_id = agreement["aftaleId"]
     delete_resp = session.delete(
         f"https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/slet/{agreement_id}",
-        timeout=REQUEST_TIMEOUT
+        timeout=REQUEST_TIMEOUT,
     )
     if not delete_resp.status_code == 200:
-        orchestrator_connection.log_error(f"Error when deleting agreement: {delete_resp}")
+        orchestrator_connection.log_error(
+            f"Error when deleting agreement: {delete_resp}"
+        )
         raise ResponseError(delete_resp)
     return delete_resp
 
 
-def change_status(orchestrator_connection: OrchestratorConnection, reference: str, agreement: dict, session: Session):
+def change_status(
+    orchestrator_connection: OrchestratorConnection,
+    reference: str,
+    agreement: dict,
+    session: Session,
+):
     """Changes status for inputted agreement based on reference"""
 
     set_status = get_status(reference)
 
     if set_status is None:
-        raise ValueError(f"reference status: {reference.split('_')[0]} does not match any of 'Godkend', 'Vent', or 'Slet'")
+        raise ValueError(
+            f"reference status: {reference.split('_')[0]} does not match any of 'Godkend', 'Vent', or 'Slet'"
+        )
 
-    orchestrator_connection.log_trace(f"Setting status from {agreement['aktuelStatus']} to {set_status}")
+    orchestrator_connection.log_trace(
+        f"Setting status from {agreement['aktuelStatus']} to {set_status}"
+    )
 
-    payload = {"aftaleid": agreement['aftaleId'], "status": set_status, "kommentar": None}
+    payload = {
+        "aftaleid": agreement["aftaleId"],
+        "status": set_status,
+        "kommentar": None,
+    }
     payload = json.dumps(payload)
 
     status_resp = session.post(
@@ -233,10 +276,10 @@ def change_status(orchestrator_connection: OrchestratorConnection, reference: st
         headers={
             "accept": "application/json",  # maybe this in session header too?
             "content-type": "application/json",
-            "Accept": "*/*"
+            "Accept": "*/*",
         },
         data=payload,
-        timeout=REQUEST_TIMEOUT
+        timeout=REQUEST_TIMEOUT,
     )
 
     if not status_resp.status_code == 200:
@@ -249,11 +292,11 @@ def change_status(orchestrator_connection: OrchestratorConnection, reference: st
 def get_status(reference):
     """Converts reference to status used in API calls"""
     set_status_dict = {
-        'Godkend': 'GODKENDT',
-        'Vent': 'VENTER',
-        'Slet': 'SLETTET',
+        "Godkend": "GODKENDT",
+        "Vent": "VENTER",
+        "Slet": "SLETTET",
     }
 
-    set_status = set_status_dict.get(reference.split('_')[0], None)
+    set_status = set_status_dict.get(reference.split("_")[0], None)
 
     return set_status

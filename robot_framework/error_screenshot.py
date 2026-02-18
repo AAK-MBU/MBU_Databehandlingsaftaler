@@ -12,7 +12,12 @@ from PIL import ImageGrab
 from robot_framework import config
 
 
-def send_error_screenshot(to_address: str | list[str], exception: Exception, process_name: str, queue_element: QueueElement | None = None):
+def send_error_screenshot(
+    to_address: str | list[str],
+    exception: Exception,
+    process_name: str,
+    queue_element: QueueElement | None = None,
+):
     """Sends an email with an error report, including a screenshot, when an exception occurs.
     Configuration details such as SMTP server, port, sender email, etc., should be set in 'config' module.
 
@@ -23,15 +28,15 @@ def send_error_screenshot(to_address: str | list[str], exception: Exception, pro
     """
     # Create message
     msg = EmailMessage()
-    msg['to'] = to_address
-    msg['from'] = config.SCREENSHOT_SENDER
-    msg['subject'] = f"Error screenshot: {process_name}"
+    msg["to"] = to_address
+    msg["from"] = config.SCREENSHOT_SENDER
+    msg["subject"] = f"Error screenshot: {process_name}"
 
     # Take screenshot and convert to base64
     screenshot = ImageGrab.grab()
     buffer = BytesIO()
-    screenshot.save(buffer, format='PNG')
-    screenshot_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    screenshot.save(buffer, format="PNG")
+    screenshot_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     # Create an HTML message with the exception and screenshot
     html_message = f"""
@@ -47,7 +52,7 @@ def send_error_screenshot(to_address: str | list[str], exception: Exception, pro
     """
 
     msg.set_content("Please enable HTML to view this message.")
-    msg.add_alternative(html_message, subtype='html')
+    msg.add_alternative(html_message, subtype="html")
 
     # Send message
     with smtplib.SMTP(config.SMTP_SERVER, config.SMTP_PORT) as smtp:
