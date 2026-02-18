@@ -1,3 +1,5 @@
+# robot_framework/subprocesses/helper_functions.py
+
 """Helper functions"""
 import json
 import sys
@@ -192,13 +194,17 @@ def get_data(orchestrator_connection: OrchestratorConnection, queue_element: Que
         raise ResponseError(resp_get_data)
 
     data_access_json = json.loads(resp_get_data.text)
-    agreements_dict = {f"{agr['udbyderSystemOgUdbyder']['navn']}_{agr['stilService']['servicenavn']}_{agr['aktuelStatus']}": agr for agr in data_access_json if agr['stilService'] is not None}
+    try:
+        agreements_dict = {f"{agr['udbydersystem']['navn']}_{agr['stilService']['servicenavn']}_{agr['aktuelStatus']}": agr for agr in data_access_json if agr['stilService'] is not None}
+    except Exception:
+        print(data_access_json)
+        print("break")
     return agreements_dict
 
 
 def delete_agreement(orchestrator_connection: OrchestratorConnection, agreement: dict, session: Session):
     """Deletes inputted agreement"""
-    agreement_id = agreement["id"]
+    agreement_id = agreement["aftaleId"]
     delete_resp = session.delete(
         f"https://tilslutning.stil.dk/dataadgangadmBE/api/adgang/slet/{agreement_id}",
         timeout=REQUEST_TIMEOUT
@@ -219,7 +225,7 @@ def change_status(orchestrator_connection: OrchestratorConnection, reference: st
 
     orchestrator_connection.log_trace(f"Setting status from {agreement['aktuelStatus']} to {set_status}")
 
-    payload = {"aftaleid": agreement['id'], "status": set_status, "kommentar": None}
+    payload = {"aftaleid": agreement['aftaleId'], "status": set_status, "kommentar": None}
     payload = json.dumps(payload)
 
     status_resp = session.post(

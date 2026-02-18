@@ -55,7 +55,7 @@ def process_queue_element(orchestrator_connection: OrchestratorConnection, queue
 
     if agreement is None:
         # Add info to infodict
-        info_dict["aftaleid"] = agreement.get("id", "Id not found")
+        info_dict["aftaleid"] = agreement.get("aftaleId", "Id not found")
         dict_lookup_ok = f"{system_name}_{service_name}_{wanted_status}"
         agreement_ok = agreements_dict.get(dict_lookup_ok, None)
         if agreement_ok is not None:

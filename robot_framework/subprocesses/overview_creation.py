@@ -1,3 +1,5 @@
+# robot_framework/subprocesses/overview_creation.py
+
 """This module handles creation of overview"""
 import json
 import time
@@ -24,9 +26,21 @@ from robot_framework.exceptions import ResponseError
 
 def store_overview(agreements_df: pd.DataFrame, base_dir: str):
     """Function to store overview as excel"""
+    # Add statusændring column
     agreements_df["statusændring"] = ""
+    
+    # Define the columns we want to keep (in order)
     cols_left = ["Instregnr", "inst_navn", "status", "statusændring", "systemNavn", "systemBeskrivelse", "serviceNavn", "udbyderNavn", "Kontaktperson"]
-    agreements_df = agreements_df[cols_left]
+    
+    # Fill missing columns with empty strings to ensure they exist
+    for col in cols_left:
+        if col not in agreements_df.columns:
+            agreements_df[col] = ""
+    
+    # Now select only the columns that exist (in case some are still missing)
+    available_cols = [col for col in cols_left if col in agreements_df.columns]
+    agreements_df = agreements_df[available_cols]
+    
     filename = os.path.join(base_dir, "Output", f"dataaftaler_oversigt_{datetime.now().strftime('%d%m%Y')}.xlsx")
 
     os.makedirs(os.path.join(base_dir, "Output"), exist_ok=True)
@@ -119,25 +133,36 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
         if len(agreements) == 0:
             orgs_without_agr.append(queue_element)
         for agreement in agreements:
-            agreement["Instregnr"] = agreement.pop("ejer")
-            agreement["inst_navn"] = v['navn']
+            agreement["Instregnr"] = v.get('kode')
+            agreement["inst_navn"] = v.get('navn')
             all_agreements.append(agreement)
 
         api_counter += 2
 
     # Store all agreements in directory
     agreements_df = pd.DataFrame(all_agreements)
-    # Rename columns
+    
+    # Rename columns - only rename those that exist
     cols_rename = {
         "inst_kode": "Instregnr",
         "aktuelStatus": "status",
         "stilService_servicenavn": "serviceNavn",
-        "udbyderSystemOgUdbyder_navn": "systemNavn",
-        "udbyderSystemOgUdbyder_beskrivelse": "systemBeskrivelse",
-        "udbyderSystemOgUdbyder_udbyder_navn": "udbyderNavn",
-        "udbyderSystemOgUdbyder_kontaktperson_navn": "Kontaktperson"
+        "udbydersystem_navn": "systemNavn",
+        "udbydersystem_beskrivelse": "systemBeskrivelse",
+        "udbyder_navn": "udbyderNavn",
+        "udbydersystem_kontaktNavn": "Kontaktperson"
     }
-    agreements_df = agreements_df.rename(columns=cols_rename)
+    
+    # Only rename columns that actually exist in the dataframe
+    existing_cols_to_rename = {k: v for k, v in cols_rename.items() if k in agreements_df.columns}
+    agreements_df = agreements_df.rename(columns=existing_cols_to_rename)
+    
+    # Log which columns are missing
+    missing_cols = set(cols_rename.keys()) - set(existing_cols_to_rename.keys())
+    if missing_cols:
+        orchestrator_connection.log_trace(f"Warning: Some expected columns are missing from the data: {missing_cols}")
+        print(f"Warning: Some expected columns are missing: {missing_cols}")
+    
     base_dir = oc_args["base_dir"]
     print(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
     orchestrator_connection.log_trace(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
