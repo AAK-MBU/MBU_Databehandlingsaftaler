@@ -1,4 +1,5 @@
 """This module handles retrieving changes in dataaftaler and uploading them to queue."""
+
 import os
 import glob
 import json
@@ -10,7 +11,7 @@ from robot_framework.config import QUEUE_NAME
 
 def clean_instregnr(instregnr):
     """Removes any decimal point and digits after it from Instregnr."""
-    return str(instregnr).split('.', maxsplit=1)[0]
+    return str(instregnr).split(".", maxsplit=1)[0]
 
 
 def retrieve_changes(base_dir):
@@ -34,22 +35,40 @@ def retrieve_changes(base_dir):
         - The Excel file must have columns 'statusændring', 'status', 'Organisation', 'Instregnr', 'systemNavn', and 'serviceNavn'.
     """
     file_path = os.path.join(base_dir, "Output")
-    excel_files = glob.glob(os.path.join(file_path, '*Oversigt*.xlsx'))
+    excel_files = glob.glob(os.path.join(file_path, "*Oversigt*.xlsx"))
     if len(excel_files) == 1:
         df = pd.read_excel(excel_files[0])
     else:
-        raise ValueError(f"There should be exactly one Oversigt file in the directory. Delete old files. Files in directory: {', '.join([file.split('/')[-1] for file in excel_files])}")
+        raise ValueError(
+            f"There should be exactly one Oversigt file in the directory. Delete old files. Files in directory: {', '.join([file.split('/')[-1] for file in excel_files])}"
+        )
 
         # Apply cleaning to Instregnr column
-    df['Instregnr'] = df['Instregnr'].apply(clean_instregnr)
+    df["Instregnr"] = df["Instregnr"].apply(clean_instregnr)
 
-    filtered_approve_df = df[(df['statusændring'] == 'GODKEND') & (df['status'] != 'GODKENDT')]
-    filtered_delete_df = df[(df['statusændring'] == 'SLET') & (df['status'] != 'SLETTET')]
-    filtered_wait_df = df[(df['statusændring'] == 'VENT') & (df['status'] != 'VENTER')]
+    filtered_approve_df = df[
+        (df["statusændring"] == "GODKEND") & (df["status"] != "GODKENDT")
+    ]
+    filtered_delete_df = df[
+        (df["statusændring"] == "SLET") & (df["status"] != "SLETTET")
+    ]
+    filtered_wait_df = df[(df["statusændring"] == "VENT") & (df["status"] != "VENTER")]
 
-    approve_data = filtered_approve_df[['Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
-    delete_data = filtered_delete_df[['Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
-    wait_data = filtered_wait_df[['Instregnr', 'systemNavn', 'serviceNavn', 'status']].dropna().to_dict(orient='records')
+    approve_data = (
+        filtered_approve_df[["Instregnr", "systemNavn", "serviceNavn", "status"]]
+        .dropna()
+        .to_dict(orient="records")
+    )
+    delete_data = (
+        filtered_delete_df[["Instregnr", "systemNavn", "serviceNavn", "status"]]
+        .dropna()
+        .to_dict(orient="records")
+    )
+    wait_data = (
+        filtered_wait_df[["Instregnr", "systemNavn", "serviceNavn", "status"]]
+        .dropna()
+        .to_dict(orient="records")
+    )
 
     total_changes = len(approve_data) + len(delete_data) + len(wait_data)
     print(f"Total changes: {total_changes}")
@@ -72,7 +91,9 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
     delete_data_json = [json.dumps(data) for data in delete_data]
     wait_data_json = [json.dumps(data) for data in wait_data]
 
-    approve_references = [f"Godkend_{generate_short_hash(data)}" for data in approve_data]
+    approve_references = [
+        f"Godkend_{generate_short_hash(data)}" for data in approve_data
+    ]
     delete_references = [f"Slet_{generate_short_hash(data)}" for data in delete_data]
     wait_references = [f"Vent_{generate_short_hash(data)}" for data in wait_data]
 
@@ -84,17 +105,19 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         for i, reference in enumerate(all_references):
             if all_references.count(reference) > 1:
                 all_references[i] = f"{reference}_{i}"
-        approve_references = all_references[:len(approve_references)]
-        delete_references = all_references[len(approve_references):len(approve_references) + len(delete_references)]
-        wait_references = all_references[len(approve_references) + len(delete_references):]
+        approve_references = all_references[: len(approve_references)]
+        delete_references = all_references[
+            len(approve_references) : len(approve_references) + len(delete_references)
+        ]
+        wait_references = all_references[
+            len(approve_references) + len(delete_references) :
+        ]
 
     try:
         if approve_data:
             print("Uploading Godkend data to queue...")
             orchestrator_connection.bulk_create_queue_elements(
-                QUEUE_NAME,
-                references=approve_references,
-                data=approve_data_json
+                QUEUE_NAME, references=approve_references, data=approve_data_json
             )
             print("Successfully uploaded Godkend data.")
         else:
@@ -103,9 +126,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         if delete_references:
             print("Uploading Slet data to queue...")
             orchestrator_connection.bulk_create_queue_elements(
-                QUEUE_NAME,
-                references=delete_references,
-                data=delete_data_json
+                QUEUE_NAME, references=delete_references, data=delete_data_json
             )
             print("Successfully uploaded Slet data.")
         else:
@@ -114,9 +135,7 @@ def upload_to_queue(approve_data, delete_data, wait_data, orchestrator_connectio
         if wait_references:
             print("Uploading Vent data to queue...")
             orchestrator_connection.bulk_create_queue_elements(
-                QUEUE_NAME,
-                references=wait_references,
-                data=wait_data_json
+                QUEUE_NAME, references=wait_references, data=wait_data_json
             )
             print("Successfully uploaded Vent data.")
         else:

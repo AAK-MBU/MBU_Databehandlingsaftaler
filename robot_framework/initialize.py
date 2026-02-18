@@ -11,7 +11,7 @@ def initialize(orchestrator_connection: OrchestratorConnection) -> None:
     orchestrator_connection.log_trace("Initializing.")
     oc_args = json.loads(orchestrator_connection.process_arguments)
     if "upload" in oc_args["process"]:
-        base_dir = oc_args['base_dir']
+        base_dir = oc_args["base_dir"]
 
         # Retrieve changes and upload
         orchestrator_connection.log_trace("Retrieving changes from overview.")
@@ -21,7 +21,7 @@ def initialize(orchestrator_connection: OrchestratorConnection) -> None:
         orchestrator_connection.log_trace("Queue upload completed.")
 
     if "overview" in oc_args["process"]:
-        base_dir = oc_args['base_dir']
+        base_dir = oc_args["base_dir"]
         orchestrator_connection.log_trace("Starting overview creation.")
         run_overview_creation(orchestrator_connection)
         orchestrator_connection.log_trace("Overview creation completed.")

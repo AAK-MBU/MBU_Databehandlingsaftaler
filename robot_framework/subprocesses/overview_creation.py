@@ -1,4 +1,7 @@
+# robot_framework/subprocesses/overview_creation.py
+
 """This module handles creation of overview"""
+
 import json
 import time
 import os
@@ -17,32 +20,58 @@ from robot_framework.subprocesses.helper_functions import (
     get_org_dict,
     get_org,
     get_data,
-    flatten_dict
+    flatten_dict,
 )
 from robot_framework.exceptions import ResponseError
 
 
 def store_overview(agreements_df: pd.DataFrame, base_dir: str):
     """Function to store overview as excel"""
+    # Add statusændring column
     agreements_df["statusændring"] = ""
-    cols_left = ["Instregnr", "inst_navn", "status", "statusændring", "systemNavn", "systemBeskrivelse", "serviceNavn", "udbyderNavn", "Kontaktperson"]
-    agreements_df = agreements_df[cols_left]
-    filename = os.path.join(base_dir, "Output", f"dataaftaler_oversigt_{datetime.now().strftime('%d%m%Y')}.xlsx")
+
+    # Define the columns we want to keep (in order)
+    cols_left = [
+        "Instregnr",
+        "inst_navn",
+        "status",
+        "statusændring",
+        "systemNavn",
+        "systemBeskrivelse",
+        "serviceNavn",
+        "udbyderNavn",
+        "Kontaktperson",
+    ]
+
+    # Fill missing columns with empty strings to ensure they exist
+    for col in cols_left:
+        if col not in agreements_df.columns:
+            agreements_df[col] = ""
+
+    # Now select only the columns that exist (in case some are still missing)
+    available_cols = [col for col in cols_left if col in agreements_df.columns]
+    agreements_df = agreements_df[available_cols]
+
+    filename = os.path.join(
+        base_dir,
+        "Output",
+        f"dataaftaler_oversigt_{datetime.now().strftime('%d%m%Y')}.xlsx",
+    )
 
     os.makedirs(os.path.join(base_dir, "Output"), exist_ok=True)
 
-    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        agreements_df.to_excel(writer, index=False, sheet_name='Oversigt')
-        worksheet = writer.sheets['Oversigt']
+    with pd.ExcelWriter(filename, engine="openpyxl") as writer:
+        agreements_df.to_excel(writer, index=False, sheet_name="Oversigt")
+        worksheet = writer.sheets["Oversigt"]
         worksheet.auto_filter.ref = worksheet.dimensions
 
         for row in range(2, worksheet.max_row + 1):
-            status_cell = worksheet[f'C{row}']
-            statusændring_cell = worksheet[f'D{row}']  # 'statusændring' is in column D
+            status_cell = worksheet[f"C{row}"]
+            statusændring_cell = worksheet[f"D{row}"]  # 'statusændring' is in column D
             if status_cell.value != "SLETTET":
                 dv = DataValidation(type="list", formula1='"GODKEND, SLET, VENT"')
-                dv.error_title = 'Invalid input'
-                dv.error_message = 'Please select a value from the dropdown list'
+                dv.error_title = "Invalid input"
+                dv.error_message = "Please select a value from the dropdown list"
                 worksheet.add_data_validation(dv)
                 dv.add(statusændring_cell)
 
@@ -70,13 +99,15 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     cookie_inst_list = get_browser_cookie("AuthTokenTilslutning", browser)
     # Get list of organisations, and load payloads for request posts into dict
     session = Session()
-    session.headers.update({
-        "cookie": base_cookie+";"+cookie_inst_list,
-        "x-xsrf-token": x_xsrf_token,
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Accept": "*/*"
-    })
+    session.headers.update(
+        {
+            "cookie": base_cookie + ";" + cookie_inst_list,
+            "x-xsrf-token": x_xsrf_token,
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Accept": "*/*",
+        }
+    )
     org_dict = get_org_dict(session)
 
     runtime_args = {
@@ -89,14 +120,16 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
     all_agreements = []
 
     # Get agreements from each organization
-    orchestrator_connection.log_trace(f"Fetching agreements from {len(org_dict.keys())} institutions")
+    orchestrator_connection.log_trace(
+        f"Fetching agreements from {len(org_dict.keys())} institutions"
+    )
     print(f"Fetching agreements from {len(org_dict.keys())} institutions")
     orgs_without_agr = []
     api_counter = 0
     start = time.time()
     for v in (pbar := tqdm(org_dict.values())):
-        if (api_counter >= 200 and time.time() - start < 60):
-            wait_msg = f"{api_counter} calls in {time.time()-start:.1f} seconds. Pausing for 30 seconds"
+        if api_counter >= 200 and time.time() - start < 60:
+            wait_msg = f"{api_counter} calls in {time.time() - start:.1f} seconds. Pausing for 30 seconds"
             orchestrator_connection.log_info(wait_msg)
             pbar.write(wait_msg)
             time.sleep(30)
@@ -104,46 +137,77 @@ def run_overview_creation(orchestrator_connection: OrchestratorConnection):
             start = time.time()
             pbar.write("Continuing...")
         queue_element = {"Organisation": v["type"], "Instregnr": v["kode"]}
-        org_response = get_org(orchestrator_connection, queue_element, runtime_args, session)
+        org_response = get_org(
+            orchestrator_connection, queue_element, runtime_args, session
+        )
 
         if not org_response.status_code == 200:
-            orchestrator_connection.log_error("Error while accessing organization in overview creation")
+            orchestrator_connection.log_error(
+                "Error while accessing organization in overview creation"
+            )
             raise ResponseError(org_response)
 
         # Load agreements
         org_cookie = get_request_cookie("AuthTokenTilslutning", org_response)
-        session.headers.update({"Cookie": f"{runtime_args['base_cookie']};{org_cookie}"})
+        session.headers.update(
+            {"Cookie": f"{runtime_args['base_cookie']};{org_cookie}"}
+        )
         agreements_dict_raw = get_data(orchestrator_connection, queue_element, session)
         # Format agreements and append to all agreements
         agreements = [flatten_dict(vv) for vv in agreements_dict_raw.values()]
         if len(agreements) == 0:
             orgs_without_agr.append(queue_element)
         for agreement in agreements:
-            agreement["Instregnr"] = agreement.pop("ejer")
-            agreement["inst_navn"] = v['navn']
+            agreement["Instregnr"] = v.get("kode")
+            agreement["inst_navn"] = v.get("navn")
             all_agreements.append(agreement)
 
         api_counter += 2
 
     # Store all agreements in directory
     agreements_df = pd.DataFrame(all_agreements)
-    # Rename columns
+
+    # Rename columns - only rename those that exist
     cols_rename = {
         "inst_kode": "Instregnr",
         "aktuelStatus": "status",
         "stilService_servicenavn": "serviceNavn",
-        "udbyderSystemOgUdbyder_navn": "systemNavn",
-        "udbyderSystemOgUdbyder_beskrivelse": "systemBeskrivelse",
-        "udbyderSystemOgUdbyder_udbyder_navn": "udbyderNavn",
-        "udbyderSystemOgUdbyder_kontaktperson_navn": "Kontaktperson"
+        "udbydersystem_navn": "systemNavn",
+        "udbydersystem_beskrivelse": "systemBeskrivelse",
+        "udbyder_navn": "udbyderNavn",
+        "udbydersystem_kontaktNavn": "Kontaktperson",
     }
-    agreements_df = agreements_df.rename(columns=cols_rename)
+
+    # Only rename columns that actually exist in the dataframe
+    existing_cols_to_rename = {
+        k: v for k, v in cols_rename.items() if k in agreements_df.columns
+    }
+    agreements_df = agreements_df.rename(columns=existing_cols_to_rename)
+
+    # Log which columns are missing
+    missing_cols = set(cols_rename.keys()) - set(existing_cols_to_rename.keys())
+    if missing_cols:
+        orchestrator_connection.log_trace(
+            f"Warning: Some expected columns are missing from the data: {missing_cols}"
+        )
+        print(f"Warning: Some expected columns are missing: {missing_cols}")
+
     base_dir = oc_args["base_dir"]
-    print(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
-    orchestrator_connection.log_trace(f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}")
-    orgs_without_agr_print = '\n'.join([str(i) for i in orgs_without_agr])
-    print(f"{len(orgs_without_agr)} institutions have no dataagreements: {orgs_without_agr_print}")
-    orchestrator_connection.log_trace(f"{len(orgs_without_agr)} institutions have no dataagreements: {orgs_without_agr_print}")
+    print(
+        f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}"
+    )
+    orchestrator_connection.log_trace(
+        f"{len(all_agreements)} agreements for {len(pd.unique(agreements_df['Instregnr']))} institutions fetched. Storing in {base_dir}"
+    )
+    orgs_without_agr_print = "\n".join([str(i) for i in orgs_without_agr])
+    print(
+        f"{len(orgs_without_agr)} institutions have no dataagreements: {orgs_without_agr_print}"
+    )
+    orchestrator_connection.log_trace(
+        f"{len(orgs_without_agr)} institutions have no dataagreements: {orgs_without_agr_print}"
+    )
     store_overview(agreements_df, base_dir)
 
-    orchestrator_connection.log_trace(f"{len(all_agreements)} dataaftaler fetched and stored in {base_dir}")
+    orchestrator_connection.log_trace(
+        f"{len(all_agreements)} dataaftaler fetched and stored in {base_dir}"
+    )
